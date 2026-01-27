@@ -237,14 +237,22 @@ private final class ForceClickSelectionHandler {
         Thread.sleep(forTimeInterval: 0.08)
         var copiedText = pasteboard.string(forType: .string)
         let didChange = pasteboard.changeCount != changeCount
+        if !didChange || copiedText?.isEmpty ?? true {
+            copiedText = nil
+        }
 
-        if (!didChange || copiedText?.isEmpty ?? true), selectWordIfNeeded {
+        if copiedText == nil, selectWordIfNeeded {
             if let location = currentMouseLocation() {
                 performDoubleClick(at: location)
                 Thread.sleep(forTimeInterval: 0.06)
+                let retryChangeCount = pasteboard.changeCount
                 sendCopyCommand()
                 Thread.sleep(forTimeInterval: 0.08)
-                copiedText = pasteboard.string(forType: .string)
+                let retryText = pasteboard.string(forType: .string)
+                let retryDidChange = pasteboard.changeCount != retryChangeCount
+                if retryDidChange, !(retryText?.isEmpty ?? true) {
+                    copiedText = retryText
+                }
             }
         }
 
