@@ -103,10 +103,21 @@ private final class ForceClickSelectionHandler {
         guard let text = fetchOrSelectText(), !text.isEmpty else {
             if let fallbackText = copySelectionText(selectWordIfNeeded: true), !fallbackText.isEmpty {
                 print(fallbackText)
+                showPopup(for: fallbackText)
             }
             return
         }
         print(text)
+        showPopup(for: text)
+    }
+
+    private func showPopup(for text: String) {
+        guard let location = currentMouseLocation() else {
+            return
+        }
+        Task { @MainActor in
+            forceClickSelectionPopup.show(text: text, near: location)
+        }
     }
 
     private func fetchOrSelectText() -> String? {
@@ -302,6 +313,140 @@ private final class ForceClickSelectionHandler {
     }
 }
 
+@MainActor
+private final class ForceClickSelectionPopup {
+    private let window: PopupWindow
+    private let textField: NSTextField
+
+    init() {
+        NSApplication.shared.setActivationPolicy(.accessory)
+        textField = NSTextField(labelWithString: "")
+        textField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        textField.textColor = .labelColor
+        textField.backgroundColor = .clear
+        textField.isEditable = false
+        textField.isSelectable = false
+        textField.lineBreakMode = .byWordWrapping
+        textField.maximumNumberOfLines = 4
+
+        let contentView = NSView()
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
+        contentView.layer?.cornerRadius = 8
+        contentView.addSubview(textField)
+
+        window = PopupWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .transient]
+        window.ignoresMouseEvents = false
+        window.contentView = contentView
+        window.onDismiss = { [weak window] in
+            window?.orderOut(nil)
+        }
+    }
+
+    func show(text: String, near location: CGPoint) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return
+        }
+
+        textField.stringValue = trimmedText
+        layoutContent()
+
+        let offset = CGPoint(x: 12, y: -12)
+        let frame = window.frame
+        let origin = CGPoint(
+            x: location.x + offset.x,
+            y: location.y - frame.height + offset.y
+        )
+        window.setFrameOrigin(origin)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func layoutContent() {
+        let padding = CGSize(width: 10, height: 8)
+        let maxWidth: CGFloat = 320
+        let extraSize = CGSize(width: 6, height: 2)
+        let textMaxSize = CGSize(width: maxWidth - padding.width * 2, height: .greatestFiniteMagnitude)
+        let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let boundingRect = (textField.stringValue as NSString).boundingRect(
+            with: textMaxSize,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        let textSize = CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height))
+        let contentSize = CGSize(
+            width: max(textSize.width + padding.width * 2 + extraSize.width, 60),
+            height: max(textSize.height + padding.height * 2 + extraSize.height, 28)
+        )
+        window.setContentSize(contentSize)
+        textField.frame = NSRect(
+            x: padding.width,
+            y: padding.height,
+            width: contentSize.width - padding.width * 2 - extraSize.width,
+            height: contentSize.height - padding.height * 2 - extraSize.height
+        )
+        window.contentView?.frame = NSRect(origin: .zero, size: contentSize)
+    }
+
+    private func ensureMonitors() {}
+
+    func dismissOnEscape() {
+        guard window.isVisible else {
+            return
+        }
+        window.orderOut(nil)
+    }
+
+    func dismissIfClickOutside(_ location: CGPoint) {
+        guard window.isVisible else {
+            return
+        }
+        if !window.frame.contains(location) {
+            window.orderOut(nil)
+        }
+    }
+}
+
+private final class PopupWindow: NSWindow {
+    var onDismiss: (() -> Void)?
+
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == CGKeyCode(kVK_Escape) {
+            onDismiss?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        onDismiss?()
+    }
+}
+
+@MainActor
+private let forceClickSelectionPopup = ForceClickSelectionPopup()
+
 private struct PasteboardSnapshot {
     private let items: [[NSPasteboard.PasteboardType: Data]]
 
@@ -443,6 +588,23 @@ private final class EventTapController {
         }
 
         switch type {
+        case .keyDown:
+            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+            if keyCode == CGKeyCode(kVK_Escape) {
+                Task { @MainActor in
+                    forceClickSelectionPopup.dismissOnEscape()
+                }
+            }
+        case .leftMouseDown, .rightMouseDown:
+            let location = event.location
+            Task { @MainActor in
+                forceClickSelectionPopup.dismissIfClickOutside(location)
+            }
+        default:
+            break
+        }
+
+        switch type {
         case .leftMouseDown:
             monitor.setMouseDown(true)
         case .leftMouseUp:
@@ -472,6 +634,8 @@ private final class ForceClickEventTap {
             (1 << CGEventType.leftMouseDown.rawValue)
                 | (1 << CGEventType.leftMouseUp.rawValue)
                 | (1 << CGEventType.leftMouseDragged.rawValue)
+                | (1 << CGEventType.rightMouseDown.rawValue)
+                | (1 << CGEventType.keyDown.rawValue)
         )
 
         guard let tap = CGEvent.tapCreate(
