@@ -313,6 +313,20 @@ private final class ForceClickSelectionHandler {
     }
 }
 
+private final class DraggableContentView: NSView {
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        self
+    }
+}
+
 @MainActor
 private final class ForceClickSelectionPopup {
     private let window: PopupWindow
@@ -329,7 +343,7 @@ private final class ForceClickSelectionPopup {
         textField.lineBreakMode = .byWordWrapping
         textField.maximumNumberOfLines = 4
 
-        let contentView = NSView()
+        let contentView = DraggableContentView()
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
@@ -344,6 +358,7 @@ private final class ForceClickSelectionPopup {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
+        window.isMovableByWindowBackground = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .transient]
         window.ignoresMouseEvents = false
@@ -376,7 +391,7 @@ private final class ForceClickSelectionPopup {
     private func layoutContent() {
         let padding = CGSize(width: 10, height: 8)
         let maxWidth: CGFloat = 320
-        let extraSize = CGSize(width: 6, height: 2)
+        let extraSize = CGSize(width: 10, height: 2)
         let textMaxSize = CGSize(width: maxWidth - padding.width * 2, height: .greatestFiniteMagnitude)
         let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
@@ -385,7 +400,7 @@ private final class ForceClickSelectionPopup {
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: attributes
         )
-        let textSize = CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height))
+        let textSize = CGSize(width: ceil(boundingRect.width) + 2, height: ceil(boundingRect.height))
         let contentSize = CGSize(
             width: max(textSize.width + padding.width * 2 + extraSize.width, 60),
             height: max(textSize.height + padding.height * 2 + extraSize.height, 28)
@@ -394,8 +409,8 @@ private final class ForceClickSelectionPopup {
         textField.frame = NSRect(
             x: padding.width,
             y: padding.height,
-            width: contentSize.width - padding.width * 2 - extraSize.width,
-            height: contentSize.height - padding.height * 2 - extraSize.height
+            width: contentSize.width - padding.width * 2,
+            height: contentSize.height - padding.height * 2
         )
         window.contentView?.frame = NSRect(origin: .zero, size: contentSize)
     }
@@ -413,9 +428,24 @@ private final class ForceClickSelectionPopup {
         guard window.isVisible else {
             return
         }
-        if !window.frame.contains(location) {
+        if !isLocationInsideWindow(location) {
             window.orderOut(nil)
         }
+    }
+
+    private func isLocationInsideWindow(_ location: CGPoint) -> Bool {
+        let windowNumberAtPoint = NSWindow.windowNumber(
+            at: location,
+            belowWindowWithWindowNumber: 0
+        )
+        if windowNumberAtPoint == window.windowNumber {
+            return true
+        }
+        if let contentView = window.contentView {
+            let windowPoint = window.convertPoint(fromScreen: location)
+            return contentView.bounds.contains(windowPoint)
+        }
+        return window.frame.contains(location)
     }
 }
 
@@ -438,10 +468,6 @@ private final class PopupWindow: NSWindow {
         super.keyDown(with: event)
     }
 
-    override func resignKey() {
-        super.resignKey()
-        onDismiss?()
-    }
 }
 
 @MainActor
@@ -596,7 +622,7 @@ private final class EventTapController {
                 }
             }
         case .leftMouseDown, .rightMouseDown:
-            let location = event.location
+            let location = NSEvent.mouseLocation
             Task { @MainActor in
                 forceClickSelectionPopup.dismissIfClickOutside(location)
             }
