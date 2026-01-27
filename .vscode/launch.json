@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:digger}",
+            "name": "Debug digger",
+            "target": "digger",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug digger"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:digger}",
+            "name": "Release digger",
+            "target": "digger",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release digger"
+        }
+    ]
+}
