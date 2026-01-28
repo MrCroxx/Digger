@@ -810,6 +810,187 @@ private final class PopupWindow: NSWindow {
 }
 
 @MainActor
+private final class PreferencesWindowController {
+    private let window: NSWindow
+    private let apiKeyValueField: NSTextField
+    private let endpointValueField: NSTextField
+    private let thresholdValueField: NSTextField
+    private let deltaValueField: NSTextField
+    private let windowValueField: NSTextField
+
+    init() {
+        let contentView = NSView()
+        contentView.wantsLayer = true
+
+        let titleField = NSTextField(labelWithString: "Preferences")
+        titleField.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleField.textColor = .labelColor
+
+        let descriptionField = NSTextField(wrappingLabelWithString: "配置通过环境变量设置，修改后请重启 Digger。")
+        descriptionField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        descriptionField.textColor = .secondaryLabelColor
+
+        apiKeyValueField = PreferencesWindowController.makeValueField()
+        endpointValueField = PreferencesWindowController.makeValueField()
+        thresholdValueField = PreferencesWindowController.makeValueField()
+        deltaValueField = PreferencesWindowController.makeValueField()
+        windowValueField = PreferencesWindowController.makeValueField()
+
+        let stackView = NSStackView()
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 10
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+
+        stackView.addArrangedSubview(titleField)
+        stackView.addArrangedSubview(descriptionField)
+        stackView.addArrangedSubview(Self.makeRow(label: "OPENAI_API_KEY", valueField: apiKeyValueField))
+        stackView.addArrangedSubview(Self.makeRow(label: "OPENAI_ENDPOINT", valueField: endpointValueField))
+        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", valueField: thresholdValueField))
+        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_PRESSURE_DELTA", valueField: deltaValueField))
+        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", valueField: windowValueField))
+
+        contentView.addSubview(stackView)
+
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
+        ])
+
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 300),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Preferences"
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.contentView = contentView
+
+        refreshValues()
+    }
+
+    func show() {
+        refreshValues()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func refreshValues() {
+        let env = ProcessInfo.processInfo.environment
+        let apiKey = env["OPENAI_API_KEY"] ?? ""
+        if apiKey.isEmpty {
+            apiKeyValueField.stringValue = "未设置"
+        } else if apiKey.count <= 8 {
+            apiKeyValueField.stringValue = "已设置 (\(apiKey))"
+        } else {
+            apiKeyValueField.stringValue = "已设置 (…\(apiKey.suffix(4)))"
+        }
+
+        let endpoint = env["OPENAI_ENDPOINT"] ?? ""
+        endpointValueField.stringValue = endpoint.isEmpty ? "默认 (https://api.openai.com/v1)" : endpoint
+
+        thresholdValueField.stringValue = valueFromEnv(
+            env["FORCE_CLICK_PRESSURE_THRESHOLD"],
+            defaultValue: "3.0"
+        )
+        deltaValueField.stringValue = valueFromEnv(
+            env["FORCE_CLICK_PRESSURE_DELTA"],
+            defaultValue: "2.0"
+        )
+        windowValueField.stringValue = valueFromEnv(
+            env["FORCE_CLICK_BASELINE_WINDOW_MS"],
+            defaultValue: "120 ms"
+        )
+    }
+
+    private func valueFromEnv(_ value: String?, defaultValue: String) -> String {
+        guard let value, !value.isEmpty else {
+            return "\(defaultValue) (默认)"
+        }
+        return value
+    }
+
+    private static func makeValueField() -> NSTextField {
+        let field = NSTextField(labelWithString: "")
+        field.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        field.textColor = .labelColor
+        field.lineBreakMode = .byTruncatingMiddle
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    private static func makeRow(label: String, valueField: NSTextField) -> NSStackView {
+        let labelField = NSTextField(labelWithString: label)
+        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        labelField.textColor = .secondaryLabelColor
+        labelField.setContentHuggingPriority(.required, for: .horizontal)
+        labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let row = NSStackView(views: [labelField, valueField])
+        row.orientation = .horizontal
+        row.alignment = .firstBaseline
+        row.spacing = 12
+        return row
+    }
+}
+
+@MainActor
+private final class MenuBarController: NSObject {
+    private let statusItem: NSStatusItem
+    private let preferencesController: PreferencesWindowController
+
+    init(preferencesController: PreferencesWindowController) {
+        self.preferencesController = preferencesController
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        super.init()
+        configureStatusItem()
+    }
+
+    private func configureStatusItem() {
+        if let button = statusItem.button {
+            let image = NSImage(systemSymbolName: "text.magnifyingglass", accessibilityDescription: "Digger")
+            image?.isTemplate = true
+            button.image = image
+            button.toolTip = "Digger"
+        }
+
+        let menu = NSMenu()
+        let preferencesItem = NSMenuItem(
+            title: "Preferences…",
+            action: #selector(openPreferences),
+            keyEquivalent: ","
+        )
+        preferencesItem.target = self
+        menu.addItem(preferencesItem)
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit Digger",
+            action: #selector(quitApp),
+            keyEquivalent: "q"
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+    }
+
+    @objc private func openPreferences() {
+        preferencesController.show()
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
+    }
+}
+
+@MainActor
 private let forceClickSelectionPopup = ForceClickSelectionPopup()
 
 private struct PasteboardSnapshot {
@@ -1043,6 +1224,11 @@ private func eventTapCallback(
 @main
 struct Digger {
     static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let preferencesController = PreferencesWindowController()
+        let menuBarController = MenuBarController(preferencesController: preferencesController)
+
         let manager = OMSManager.shared
         let thresholdText = ProcessInfo.processInfo.environment["FORCE_CLICK_PRESSURE_THRESHOLD"]
         let deltaText = ProcessInfo.processInfo.environment["FORCE_CLICK_PRESSURE_DELTA"]
@@ -1077,7 +1263,10 @@ struct Digger {
             print("Force click monitor started.")
         }
 
-        RunLoop.main.run()
-        withExtendedLifetime(eventTap) {}
+        withExtendedLifetime(menuBarController) {
+            withExtendedLifetime(eventTap) {
+                app.run()
+            }
+        }
     }
 }
