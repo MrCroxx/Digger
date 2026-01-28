@@ -4,6 +4,10 @@ import OpenAI
 actor OpenAITranslator {
     private let client: OpenAI
 
+    static func translationPrompt(for targetLanguage: TranslationTargetLanguage) -> String {
+        "Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."
+    }
+
     init?() {
         let token = AppPreferences.apiKey()
         guard !token.isEmpty else {
@@ -45,10 +49,21 @@ actor OpenAITranslator {
 
     func translate(_ text: String) async throws -> String {
         let targetLanguage = AppPreferences.translationTargetLanguage()
+        let prompt = Self.translationPrompt(for: targetLanguage)
+        return try await runPrompt(prompt, input: text)
+    }
+
+    func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
+        let targetLanguage = AppPreferences.translationTargetLanguage()
+        let prompt = Self.translationPrompt(for: targetLanguage)
+        return try await runPromptStream(prompt, input: text)
+    }
+
+    func runPrompt(_ prompt: String, input: String) async throws -> String {
         let query = ChatQuery(
             messages: [
-                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
-                .user(.init(content: .string(text)))
+                .system(.init(content: .textContent(prompt))),
+                .user(.init(content: .string(input)))
             ],
             model: .gpt4_1_mini,
             temperature: 0.2
@@ -57,12 +72,11 @@ actor OpenAITranslator {
         return result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
     }
 
-    func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
-        let targetLanguage = AppPreferences.translationTargetLanguage()
+    func runPromptStream(_ prompt: String, input: String) async throws -> AsyncThrowingStream<String, Error> {
         let query = ChatQuery(
             messages: [
-                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
-                .user(.init(content: .string(text)))
+                .system(.init(content: .textContent(prompt))),
+                .user(.init(content: .string(input)))
             ],
             model: .gpt4_1_mini,
             temperature: 0.2

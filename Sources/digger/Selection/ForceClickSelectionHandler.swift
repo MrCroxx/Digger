@@ -4,6 +4,22 @@ import Carbon
 import Foundation
 import os
 
+struct LayoutRequest: Sendable {
+    let id: UUID
+    let title: String
+    let prompt: String
+    let isTranslation: Bool
+    let usesStreaming: Bool
+}
+
+struct LayoutExecutionContext: Sendable {
+    let trimmedText: String
+    let locationX: Double
+    let locationY: Double
+    let requestID: UUID
+    let layoutRequests: [LayoutRequest]
+}
+
 final class ForceClickSelectionHandler {
     private let systemElement = AXUIElementCreateSystemWide()
     private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
@@ -17,7 +33,7 @@ final class ForceClickSelectionHandler {
         }
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             print(selectedText)
-            translateAndShow(text: selectedText)
+            runLayoutsAndShow(text: selectedText)
             return
         }
 
@@ -29,7 +45,7 @@ final class ForceClickSelectionHandler {
             }
             if !cachedText.isEmpty {
                 print(cachedText)
-                translateAndShow(text: cachedText)
+                runLayoutsAndShow(text: cachedText)
                 return
             }
         }
@@ -38,12 +54,12 @@ final class ForceClickSelectionHandler {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
                 print(fallbackText)
-                translateAndShow(text: fallbackText)
+                runLayoutsAndShow(text: fallbackText)
             }
             return
         }
         print(text)
-        translateAndShow(text: text)
+        runLayoutsAndShow(text: text)
     }
 
     func cacheSelectionBeforeMouseDown() {
@@ -215,7 +231,7 @@ final class ForceClickSelectionHandler {
         return nil
     }
 
-    private func translateAndShow(text: String) {
+    private func runLayoutsAndShow(text: String) {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
             return
@@ -224,83 +240,186 @@ final class ForceClickSelectionHandler {
             return
         }
         let requestID = UUID()
-        Task { @MainActor in
-            forceClickSelectionPopup.showLoading(original: trimmedText, near: location, requestID: requestID)
+        let layoutRequests = buildLayoutRequests()
+        let layoutDefinitions = layoutRequests.map {
+            PopupLayoutDefinition(id: $0.id, title: $0.title, isTranslation: $0.isTranslation)
         }
-        Task { [trimmedText, location, requestID] in
-            if let translator = OpenAITranslator() {
-                if AppPreferences.translationStreamingEnabled() {
-                    do {
-                        let stream = try await translator.translateStream(trimmedText)
-                        var accumulated = ""
-                        for try await delta in stream {
-                            guard !delta.isEmpty else {
-                                continue
-                            }
-                            accumulated += delta
-                            await MainActor.run {
-                                forceClickSelectionPopup.updateTranslation(
-                                    accumulated,
-                                    for: requestID,
-                                    near: location,
-                                    isFinal: false
-                                )
-                            }
-                        }
-                        let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let translation = trimmed.isEmpty ? UIStrings.Translation.emptyResult : trimmed
-                        print("\(UIStrings.Translation.printPrefix) \(translation)")
-                        await MainActor.run {
-                            forceClickSelectionPopup.updateTranslation(
-                                translation,
-                                for: requestID,
-                                near: location,
-                                isFinal: true
-                            )
-                        }
-                    } catch {
-                        let translation = UIStrings.Translation.failed
-                        print("\(UIStrings.Translation.printPrefix) \(translation)")
-                        await MainActor.run {
-                            forceClickSelectionPopup.updateTranslation(
-                                translation,
-                                for: requestID,
-                                near: location,
-                                isFinal: true
-                            )
-                        }
-                    }
-                } else {
-                    let translation: String
-                    do {
-                        let result = try await translator.translate(trimmedText)
-                        translation = result.isEmpty ? UIStrings.Translation.emptyResult : result
-                    } catch {
-                        translation = UIStrings.Translation.failed
-                    }
-                    print("\(UIStrings.Translation.printPrefix) \(translation)")
-                    await MainActor.run {
-                        forceClickSelectionPopup.updateTranslation(
-                            translation,
-                            for: requestID,
-                            near: location,
-                            isFinal: true
-                        )
-                    }
+        Task { @MainActor in
+            forceClickSelectionPopup.showLoading(
+                original: trimmedText,
+                layouts: layoutDefinitions,
+                near: location,
+                requestID: requestID
+            )
+        }
+        guard !layoutRequests.isEmpty else {
+            return
+        }
+        let context = LayoutExecutionContext(
+            trimmedText: trimmedText,
+            locationX: Double(location.x),
+            locationY: Double(location.y),
+            requestID: requestID,
+            layoutRequests: layoutRequests
+        )
+        LayoutRequestRunner.start(context)
+    }
+
+    static func runLayoutRequests(context: LayoutExecutionContext) async {
+        let trimmedText = context.trimmedText
+        let location = CGPoint(x: context.locationX, y: context.locationY)
+        let requestID = context.requestID
+        let layoutRequests = context.layoutRequests
+        guard let translator = OpenAITranslator() else {
+            let message = UIStrings.Translation.missingApiKey
+            for request in layoutRequests {
+                if request.isTranslation {
+                    print("\(UIStrings.Translation.printPrefix) \(message)")
                 }
-            } else {
-                let translation = UIStrings.Translation.missingApiKey
-                print("\(UIStrings.Translation.printPrefix) \(translation)")
                 await MainActor.run {
-                    forceClickSelectionPopup.updateTranslation(
-                        translation,
-                        for: requestID,
+                    forceClickSelectionPopup.updateLayoutResult(
+                        message,
+                        for: request.id,
+                        requestID: requestID,
                         near: location,
                         isFinal: true
                     )
                 }
             }
+            return
         }
+
+        await withTaskGroup(of: Void.self) { group in
+            for request in layoutRequests {
+                group.addTask {
+                    await processLayoutRequest(
+                        request,
+                        translator: translator,
+                        trimmedText: trimmedText,
+                        location: location,
+                        requestID: requestID
+                    )
+                }
+            }
+        }
+    }
+
+    private static func processLayoutRequest(
+        _ request: LayoutRequest,
+        translator: OpenAITranslator,
+        trimmedText: String,
+        location: CGPoint,
+        requestID: UUID
+    ) async {
+        if request.usesStreaming {
+            do {
+                let stream = try await translator.runPromptStream(request.prompt, input: trimmedText)
+                var accumulated = ""
+                for try await delta in stream {
+                    guard !delta.isEmpty else {
+                        continue
+                    }
+                    accumulated += delta
+                    await MainActor.run {
+                        forceClickSelectionPopup.updateLayoutResult(
+                            accumulated,
+                            for: request.id,
+                            requestID: requestID,
+                            near: location,
+                            isFinal: false
+                        )
+                    }
+                }
+                let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                let result = trimmed.isEmpty ? Self.emptyResult(for: request) : trimmed
+                if request.isTranslation {
+                    print("\(UIStrings.Translation.printPrefix) \(result)")
+                }
+                await MainActor.run {
+                    forceClickSelectionPopup.updateLayoutResult(
+                        result,
+                        for: request.id,
+                        requestID: requestID,
+                        near: location,
+                        isFinal: true
+                    )
+                }
+            } catch {
+                let result = Self.failedResult(for: request)
+                if request.isTranslation {
+                    print("\(UIStrings.Translation.printPrefix) \(result)")
+                }
+                await MainActor.run {
+                    forceClickSelectionPopup.updateLayoutResult(
+                        result,
+                        for: request.id,
+                        requestID: requestID,
+                        near: location,
+                        isFinal: true
+                    )
+                }
+            }
+        } else {
+            let result: String
+            do {
+                let response = try await translator.runPrompt(request.prompt, input: trimmedText)
+                result = response.isEmpty ? Self.emptyResult(for: request) : response
+            } catch {
+                result = Self.failedResult(for: request)
+            }
+            if request.isTranslation {
+                print("\(UIStrings.Translation.printPrefix) \(result)")
+            }
+            await MainActor.run {
+                forceClickSelectionPopup.updateLayoutResult(
+                    result,
+                    for: request.id,
+                    requestID: requestID,
+                    near: location,
+                    isFinal: true
+                )
+            }
+        }
+    }
+
+
+    private func buildLayoutRequests() -> [LayoutRequest] {
+        var requests: [LayoutRequest] = []
+        if PromptLayoutPreferences.translationLayoutEnabled() {
+            let targetLanguage = AppPreferences.translationTargetLanguage()
+            let prompt = OpenAITranslator.translationPrompt(for: targetLanguage)
+            requests.append(LayoutRequest(
+                id: UUID(),
+                title: UIStrings.Popup.translationTitle,
+                prompt: prompt,
+                isTranslation: true,
+                usesStreaming: AppPreferences.translationStreamingEnabled()
+            ))
+        }
+
+        for layout in PromptLayoutPreferences.loadLayouts() {
+            let title = layout.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let prompt = layout.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty, !prompt.isEmpty else {
+                continue
+            }
+            requests.append(LayoutRequest(
+                id: layout.id,
+                title: title,
+                prompt: prompt,
+                isTranslation: false,
+                usesStreaming: false
+            ))
+        }
+        return requests
+    }
+
+    private static func emptyResult(for request: LayoutRequest) -> String {
+        request.isTranslation ? UIStrings.Translation.emptyResult : UIStrings.Layout.emptyResult
+    }
+
+    private static func failedResult(for request: LayoutRequest) -> String {
+        request.isTranslation ? UIStrings.Translation.failed : UIStrings.Layout.failed
     }
 
     private func fetchOrSelectText() -> String? {

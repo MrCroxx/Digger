@@ -23,11 +23,32 @@ final class PreferencesWindowController: NSObject {
     private let popupFontSizeSlider: NSSlider
     private let popupFontSizeValueField: NSTextField
     private let streamingToggle: NSButton
+    private let layoutsLabelField: NSTextField
+    private let translationLayoutToggle: NSButton
+    private let translationLayoutTitleLabelField: NSTextField
+    private let translationLayoutTitleField: NSTextField
+    private let translationLayoutPromptLabelField: NSTextField
+    private let translationLayoutPromptScrollView: NSScrollView
+    private let translationLayoutPromptView: NSTextView
+    private let customLayoutsStackView: NSStackView
+    private let addLayoutButton: NSButton
+    private var layoutEditors: [UUID: LayoutEditor] = [:]
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
     nonisolated(unsafe) private var mouseDownMonitor: Any?
+
+    private struct LayoutEditor {
+        let id: UUID
+        let container: NSStackView
+        let titleLabelField: NSTextField
+        let titleField: NSTextField
+        let promptLabelField: NSTextField
+        let promptScrollView: NSScrollView
+        let promptTextView: NSTextView
+        let removeButton: NSButton
+    }
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
@@ -130,12 +151,60 @@ final class PreferencesWindowController: NSObject {
         streamingToggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
         streamingToggle.font = NSFont.systemFont(ofSize: 12, weight: .regular)
 
+        layoutsLabelField = NSTextField(labelWithString: UIStrings.Preferences.layoutsTitle)
+        layoutsLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        layoutsLabelField.textColor = .secondaryLabelColor
+
+        translationLayoutToggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+        translationLayoutToggle.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+
+        translationLayoutTitleLabelField = NSTextField(labelWithString: UIStrings.Preferences.layoutTitleLabel)
+        translationLayoutTitleLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        translationLayoutTitleLabelField.textColor = .secondaryLabelColor
+        translationLayoutTitleField = NSTextField()
+        translationLayoutTitleField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        translationLayoutTitleField.isEditable = false
+        translationLayoutTitleField.isSelectable = true
+        translationLayoutTitleField.isBordered = true
+        translationLayoutTitleField.focusRingType = .none
+
+        translationLayoutPromptLabelField = NSTextField(labelWithString: UIStrings.Preferences.layoutPromptLabel)
+        translationLayoutPromptLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        translationLayoutPromptLabelField.textColor = .secondaryLabelColor
+        translationLayoutPromptView = Self.makePromptTextView(isEditable: false)
+        translationLayoutPromptScrollView = Self.makePromptScrollView(with: translationLayoutPromptView)
+
+        customLayoutsStackView = NSStackView()
+        customLayoutsStackView.orientation = .vertical
+        customLayoutsStackView.alignment = .leading
+        customLayoutsStackView.distribution = .fill
+        customLayoutsStackView.spacing = 12
+
+        addLayoutButton = NSButton(title: UIStrings.Preferences.addLayout, target: nil, action: nil)
+        addLayoutButton.bezelStyle = .rounded
+
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
+        stackView.distribution = .fill
         stackView.spacing = 10
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+
+        let translationLayoutStackView = NSStackView()
+        translationLayoutStackView.orientation = .vertical
+        translationLayoutStackView.alignment = .leading
+        translationLayoutStackView.distribution = .fill
+        translationLayoutStackView.spacing = 6
+        translationLayoutStackView.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 4, right: 0)
+        translationLayoutStackView.addArrangedSubview(translationLayoutTitleLabelField)
+        translationLayoutStackView.addArrangedSubview(translationLayoutTitleField)
+        translationLayoutStackView.addArrangedSubview(translationLayoutPromptLabelField)
+        translationLayoutStackView.addArrangedSubview(translationLayoutPromptScrollView)
+
+        customLayoutsStackView.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 4, right: 0)
+        customLayoutsStackView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        customLayoutsStackView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         stackView.addArrangedSubview(titleField)
         stackView.addArrangedSubview(descriptionField)
@@ -148,6 +217,11 @@ final class PreferencesWindowController: NSObject {
         stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
         stackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
         stackView.addArrangedSubview(streamingToggle)
+        stackView.addArrangedSubview(layoutsLabelField)
+        stackView.addArrangedSubview(translationLayoutToggle)
+        stackView.addArrangedSubview(translationLayoutStackView)
+        stackView.addArrangedSubview(customLayoutsStackView)
+        stackView.addArrangedSubview(addLayoutButton)
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
@@ -156,17 +230,30 @@ final class PreferencesWindowController: NSObject {
         stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
 
-        contentView.addSubview(stackView)
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.documentView = stackView
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
+            stackView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
         ])
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -203,6 +290,10 @@ final class PreferencesWindowController: NSObject {
         targetLanguagePopUp.action = #selector(handleTargetLanguageChange(_:))
         streamingToggle.target = self
         streamingToggle.action = #selector(handleStreamingToggle(_:))
+        translationLayoutToggle.target = self
+        translationLayoutToggle.action = #selector(handleTranslationLayoutToggle(_:))
+        addLayoutButton.target = self
+        addLayoutButton.action = #selector(handleAddLayout(_:))
 
         apiKeyField.delegate = self
         endpointField.delegate = self
@@ -246,12 +337,17 @@ final class PreferencesWindowController: NSObject {
         popupMaxHeightField.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
         popupTooltipDelayField.stringValue = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
         streamingToggle.state = AppPreferences.translationStreamingEnabled() ? .on : .off
+        translationLayoutToggle.state = PromptLayoutPreferences.translationLayoutEnabled() ? .on : .off
         if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
             languagePopUp.selectItem(at: index)
         }
         if let index = TranslationTargetLanguage.allCases.firstIndex(of: AppPreferences.translationTargetLanguage()) {
             targetLanguagePopUp.selectItem(at: index)
         }
+
+        translationLayoutTitleField.stringValue = UIStrings.Popup.translationTitle
+        updateTranslationPromptText()
+        rebuildLayoutEditors()
 
         let size = PopupFontPreferences.load()
         popupFontSizeSlider.doubleValue = Double(size)
@@ -267,6 +363,17 @@ final class PreferencesWindowController: NSObject {
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
         targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
         streamingToggle.title = UIStrings.Preferences.streamingLabel
+        layoutsLabelField.stringValue = UIStrings.Preferences.layoutsTitle
+        translationLayoutToggle.title = UIStrings.Preferences.translationLayoutToggle
+        translationLayoutTitleLabelField.stringValue = UIStrings.Preferences.layoutTitleLabel
+        translationLayoutPromptLabelField.stringValue = UIStrings.Preferences.layoutPromptLabel
+        addLayoutButton.title = UIStrings.Preferences.addLayout
+        translationLayoutTitleField.stringValue = UIStrings.Popup.translationTitle
+        for editor in layoutEditors.values {
+            editor.titleLabelField.stringValue = UIStrings.Preferences.layoutTitleLabel
+            editor.promptLabelField.stringValue = UIStrings.Preferences.layoutPromptLabel
+            editor.removeButton.title = UIStrings.Preferences.removeLayout
+        }
         window.title = UIStrings.Preferences.title
     }
 
@@ -336,6 +443,142 @@ final class PreferencesWindowController: NSObject {
         row.alignment = .centerY
         row.spacing = 12
         return row
+    }
+
+    private static func makePromptTextView(isEditable: Bool) -> NSTextView {
+        let textView = NSTextView()
+        textView.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        textView.isEditable = isEditable
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.drawsBackground = true
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        return textView
+    }
+
+    private static func makePromptScrollView(with textView: NSTextView, height: CGFloat = 90) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.borderType = .bezelBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = textView
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.heightAnchor.constraint(equalToConstant: height).isActive = true
+        return scrollView
+    }
+
+    private func updateTranslationPromptText() {
+        let prompt = OpenAITranslator.translationPrompt(for: AppPreferences.translationTargetLanguage())
+        translationLayoutPromptView.string = prompt
+    }
+
+    private func rebuildLayoutEditors() {
+        for editor in layoutEditors.values {
+            customLayoutsStackView.removeArrangedSubview(editor.container)
+            editor.container.removeFromSuperview()
+        }
+        layoutEditors.removeAll(keepingCapacity: true)
+
+        for layout in PromptLayoutPreferences.loadLayouts() {
+            let editor = makeLayoutEditor(for: layout)
+            layoutEditors[layout.id] = editor
+            customLayoutsStackView.addArrangedSubview(editor.container)
+        }
+    }
+
+    private func makeLayoutEditor(for layout: PromptLayout) -> LayoutEditor {
+        let container = NSStackView()
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.distribution = .fill
+        container.spacing = 6
+        container.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+
+        let titleLabelField = NSTextField(labelWithString: UIStrings.Preferences.layoutTitleLabel)
+        titleLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        titleLabelField.textColor = .secondaryLabelColor
+
+        let titleField = NSTextField()
+        titleField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        titleField.isEditable = true
+        titleField.isSelectable = true
+        titleField.isBordered = true
+        titleField.stringValue = layout.title
+        titleField.identifier = NSUserInterfaceItemIdentifier(layout.id.uuidString)
+        titleField.target = self
+        titleField.action = #selector(handleLayoutTitleChange(_:))
+        titleField.delegate = self
+
+        let promptLabelField = NSTextField(labelWithString: UIStrings.Preferences.layoutPromptLabel)
+        promptLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        promptLabelField.textColor = .secondaryLabelColor
+
+        let promptTextView = Self.makePromptTextView(isEditable: true)
+        promptTextView.string = layout.prompt
+        promptTextView.identifier = NSUserInterfaceItemIdentifier(layout.id.uuidString)
+        promptTextView.delegate = self
+        let promptScrollView = Self.makePromptScrollView(with: promptTextView)
+        promptScrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        promptScrollView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let removeButton = NSButton(title: UIStrings.Preferences.removeLayout, target: self, action: #selector(handleRemoveLayout(_:)))
+        removeButton.identifier = NSUserInterfaceItemIdentifier(layout.id.uuidString)
+        removeButton.bezelStyle = .rounded
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        removeButton.setContentHuggingPriority(.required, for: .horizontal)
+        let removeRow = NSStackView(views: [spacer, removeButton])
+        removeRow.orientation = .horizontal
+        removeRow.alignment = .centerY
+        removeRow.spacing = 8
+
+        container.addArrangedSubview(titleLabelField)
+        container.addArrangedSubview(titleField)
+        container.addArrangedSubview(promptLabelField)
+        container.addArrangedSubview(promptScrollView)
+        container.addArrangedSubview(removeRow)
+
+        return LayoutEditor(
+            id: layout.id,
+            container: container,
+            titleLabelField: titleLabelField,
+            titleField: titleField,
+            promptLabelField: promptLabelField,
+            promptScrollView: promptScrollView,
+            promptTextView: promptTextView,
+            removeButton: removeButton
+        )
+    }
+
+    private func updateLayout(id: UUID, title: String? = nil, prompt: String? = nil) {
+        var layouts = PromptLayoutPreferences.loadLayouts()
+        guard let index = layouts.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        var updated = layouts[index]
+        if let title {
+            updated.title = title
+        }
+        if let prompt {
+            updated.prompt = prompt
+        }
+        layouts[index] = updated
+        PromptLayoutPreferences.saveLayouts(layouts)
+    }
+
+    private func layoutID(from identifier: NSUserInterfaceItemIdentifier?) -> UUID? {
+        guard let rawValue = identifier?.rawValue else {
+            return nil
+        }
+        return UUID(uuidString: rawValue)
     }
 
     @objc private func handleFontSizeChange(_ sender: NSSlider) {
@@ -417,10 +660,44 @@ final class PreferencesWindowController: NSObject {
             return
         }
         AppPreferences.setTranslationTargetLanguage(language)
+        updateTranslationPromptText()
     }
 
     @objc private func handleStreamingToggle(_ sender: NSButton) {
         AppPreferences.setTranslationStreamingEnabled(sender.state == .on)
+    }
+
+    @objc private func handleTranslationLayoutToggle(_ sender: NSButton) {
+        PromptLayoutPreferences.setTranslationLayoutEnabled(sender.state == .on)
+    }
+
+    @objc private func handleAddLayout(_ sender: NSButton) {
+        var layouts = PromptLayoutPreferences.loadLayouts()
+        let nextIndex = layouts.count + 1
+        let newLayout = PromptLayout(title: "Layout \(nextIndex)", prompt: "")
+        layouts.append(newLayout)
+        PromptLayoutPreferences.saveLayouts(layouts)
+        rebuildLayoutEditors()
+        if let editor = layoutEditors[newLayout.id] {
+            window.makeFirstResponder(editor.titleField)
+        }
+    }
+
+    @objc private func handleRemoveLayout(_ sender: NSButton) {
+        guard let layoutID = layoutID(from: sender.identifier) else {
+            return
+        }
+        var layouts = PromptLayoutPreferences.loadLayouts()
+        layouts.removeAll { $0.id == layoutID }
+        PromptLayoutPreferences.saveLayouts(layouts)
+        rebuildLayoutEditors()
+    }
+
+    @objc private func handleLayoutTitleChange(_ sender: NSTextField) {
+        guard let layoutID = layoutID(from: sender.identifier) else {
+            return
+        }
+        updateLayout(id: layoutID, title: sender.stringValue)
     }
 
 
@@ -489,13 +766,30 @@ final class PreferencesWindowController: NSObject {
     }
 }
 
-extension PreferencesWindowController: NSTextFieldDelegate {
+extension PreferencesWindowController: NSTextFieldDelegate, NSTextViewDelegate {
     func controlTextDidChange(_ obj: Notification) {
         return
     }
 
+    func textDidChange(_ notification: Notification) {
+        guard let textView = notification.object as? NSTextView else {
+            return
+        }
+        guard let layoutID = layoutID(from: textView.identifier), layoutEditors[layoutID] != nil else {
+            return
+        }
+        updateLayout(id: layoutID, prompt: textView.string)
+    }
+
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else {
+            return
+        }
+        if let layoutID = layoutID(from: field.identifier), layoutEditors[layoutID] != nil {
+            handleLayoutTitleChange(field)
+            if shouldResignFocusOnEndEditing(obj) {
+                window.makeFirstResponder(nil)
+            }
             return
         }
         switch field {
