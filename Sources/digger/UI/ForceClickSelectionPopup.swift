@@ -145,6 +145,7 @@ final class ForceClickSelectionPopup {
     private let actionButtons: [HoverableIconButton]
     private let tooltipWindow: HoverTooltipWindow
     private var tooltipTimer: Timer?
+    private var copyFeedbackTimer: Timer?
     private weak var hoveredButton: HoverableIconButton?
     var onOpenPreferences: (() -> Void)?
     private var loadingTimer: Timer?
@@ -727,6 +728,19 @@ final class ForceClickSelectionPopup {
     }
 
     private func showTooltip(for button: HoverableIconButton) {
+        showTooltip(text: button.tooltipText, for: button)
+    }
+
+    private func hideTooltip() {
+        tooltipTimer?.invalidate()
+        tooltipTimer = nil
+        copyFeedbackTimer?.invalidate()
+        copyFeedbackTimer = nil
+        hoveredButton = nil
+        tooltipWindow.hide()
+    }
+
+    private func showTooltip(text: String, for button: HoverableIconButton) {
         guard let window = button.window else {
             return
         }
@@ -734,14 +748,19 @@ final class ForceClickSelectionPopup {
         let rectOnScreen = window.convertToScreen(rectInWindow)
         let scale = PopupFontPreferences.load() / baseTextSize
         let fontSize = baseTooltipSize * scale
-        tooltipWindow.show(text: button.tooltipText, near: rectOnScreen, fontSize: fontSize)
+        tooltipWindow.show(text: text, near: rectOnScreen, fontSize: fontSize)
     }
 
-    private func hideTooltip() {
-        tooltipTimer?.invalidate()
-        tooltipTimer = nil
+    private func showCopyFeedback(text: String, for button: HoverableIconButton) {
+        copyFeedbackTimer?.invalidate()
+        copyFeedbackTimer = nil
         hoveredButton = nil
-        tooltipWindow.hide()
+        showTooltip(text: text, for: button)
+        copyFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 0.9, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.tooltipWindow.hide()
+            }
+        }
     }
 
     @objc private func handleCopyTranslation() {
@@ -751,7 +770,9 @@ final class ForceClickSelectionPopup {
             return
         }
         let text = translationSection.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        copyToPasteboard(text)
+        if copyToPasteboard(text) {
+            showCopyFeedback(text: UIStrings.Popup.copyTranslationSuccess, for: copyTranslationButton)
+        }
     }
 
     @objc private func handleCopyAll() {
@@ -771,7 +792,9 @@ final class ForceClickSelectionPopup {
             sections.append("\(displayTitle)\n\(result)")
         }
         let combined = sections.joined(separator: "\n\n")
-        copyToPasteboard(combined)
+        if copyToPasteboard(combined) {
+            showCopyFeedback(text: UIStrings.Popup.copyAllSuccess, for: copyAllButton)
+        }
     }
 
     @objc private func handleOpenPreferences() {
@@ -779,14 +802,14 @@ final class ForceClickSelectionPopup {
         onOpenPreferences?()
     }
 
-    private func copyToPasteboard(_ text: String) {
+    private func copyToPasteboard(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return
+            return false
         }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(trimmed, forType: .string)
+        return pasteboard.setString(trimmed, forType: .string)
     }
 
     private static func makeIconButton(
