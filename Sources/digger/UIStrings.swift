@@ -67,6 +67,8 @@ enum UIStrings {
         case preferencesDescription
         case preferencesPopupFontSizeLabel
         case preferencesPopupTooltipDelayLabel
+        case preferencesPopupShortcutLabel
+        case preferencesPopupShortcutPlaceholder
         case preferencesLanguageLabel
         case preferencesTargetLanguageLabel
         case preferencesStreamingLabel
@@ -118,6 +120,8 @@ enum UIStrings {
         static var description: String { value(.preferencesDescription) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
         static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
+        static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
+        static var popupShortcutPlaceholder: String { value(.preferencesPopupShortcutPlaceholder) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
@@ -175,6 +179,8 @@ enum UIStrings {
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
             .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
+            .preferencesPopupShortcutLabel: "Trigger Shortcut",
+            .preferencesPopupShortcutPlaceholder: "Press shortcut",
             .preferencesLanguageLabel: "Language",
             .preferencesTargetLanguageLabel: "Target Language",
             .preferencesStreamingLabel: "Stream Translation",
@@ -219,6 +225,8 @@ enum UIStrings {
             .preferencesDescription: "设置会自动保存。",
             .preferencesPopupFontSizeLabel: "弹窗字号",
             .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
+            .preferencesPopupShortcutLabel: "触发快捷键",
+            .preferencesPopupShortcutPlaceholder: "按下快捷键",
             .preferencesLanguageLabel: "语言",
             .preferencesTargetLanguageLabel: "目标语言",
             .preferencesStreamingLabel: "流式译文",
@@ -263,6 +271,8 @@ enum UIStrings {
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
             .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
+            .preferencesPopupShortcutLabel: "トリガーショートカット",
+            .preferencesPopupShortcutPlaceholder: "ショートカットを入力",
             .preferencesLanguageLabel: "言語",
             .preferencesTargetLanguageLabel: "翻訳先",
             .preferencesStreamingLabel: "ストリーミング翻訳",

@@ -1,3 +1,4 @@
+import Carbon
 import CoreGraphics
 import Foundation
 
@@ -10,6 +11,8 @@ enum AppPreferences {
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
     static let popupTooltipDelayMsKey = "PopupTooltipDelayMs"
+    static let popupShortcutKeyCodeKey = "PopupShortcutKeyCode"
+    static let popupShortcutModifiersKey = "PopupShortcutModifiers"
     static let translationStreamingKey = "TranslationStreaming"
     static let languageKey = "AppLanguage"
     static let translationTargetLanguageKey = "TranslationTargetLanguage"
@@ -22,6 +25,8 @@ enum AppPreferences {
     static let defaultPopupMaxWidth: CGFloat = 520
     static let defaultPopupMaxHeight: CGFloat = 360
     static let defaultPopupTooltipDelayMs: CGFloat = 300
+    static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
+    static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand, .maskControl]
     static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
@@ -96,6 +101,19 @@ enum AppPreferences {
 
     static func setPopupTooltipDelayMs(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 0)), forKey: popupTooltipDelayMsKey)
+    }
+
+    static func popupShortcut() -> KeyboardShortcut {
+        let keyCodeValue = UserDefaults.standard.object(forKey: popupShortcutKeyCodeKey) as? NSNumber
+        let modifiersValue = UserDefaults.standard.object(forKey: popupShortcutModifiersKey) as? NSNumber
+        let keyCode = keyCodeValue.map { CGKeyCode($0.intValue) } ?? defaultPopupShortcutKeyCode
+        let modifiers = modifiersValue.map { CGEventFlags(rawValue: $0.uint64Value) } ?? defaultPopupShortcutModifiers
+        return KeyboardShortcut(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    static func setPopupShortcut(_ shortcut: KeyboardShortcut) {
+        UserDefaults.standard.set(Int(shortcut.keyCode), forKey: popupShortcutKeyCodeKey)
+        UserDefaults.standard.set(shortcut.modifiers.rawValue, forKey: popupShortcutModifiersKey)
     }
 
     static func translationStreamingEnabled() -> Bool {
