@@ -3,6 +3,14 @@ import Foundation
 
 @MainActor
 final class PreferencesWindowController: NSObject {
+    private enum PreferencesTab: Int, CaseIterable {
+        case general
+        case popup
+        case functions
+        case advanced
+        case api
+    }
+
     private let window: NSWindow
     private let titleField: NSTextField
     private let descriptionField: NSTextField
@@ -31,8 +39,9 @@ final class PreferencesWindowController: NSObject {
     private let removeFunctionButton: NSButton
     private let customFunctionsTableView: NSTableView
     private let customFunctionsTableScrollView: NSScrollView
-    private let contentStackView: NSStackView
-    private let scrollView: NSScrollView
+    private let tabView: NSTabView
+    private let sidebarStackView: NSStackView
+    private var tabButtons: [PreferencesTab: NSButton]
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
@@ -202,12 +211,17 @@ final class PreferencesWindowController: NSObject {
         customFunctionsTableScrollView.translatesAutoresizingMaskIntoConstraints = false
         customFunctionsTableScrollView.documentView = customFunctionsTableView
 
-        contentStackView = NSStackView()
-        contentStackView.orientation = .vertical
-        contentStackView.alignment = .leading
-        contentStackView.spacing = 10
-        contentStackView.translatesAutoresizingMaskIntoConstraints = false
-        contentStackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        tabView = NSTabView()
+        tabView.tabViewType = .noTabsNoBorder
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+
+        sidebarStackView = NSStackView()
+        sidebarStackView.orientation = .vertical
+        sidebarStackView.alignment = .leading
+        sidebarStackView.spacing = 8
+        sidebarStackView.edgeInsets = NSEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        sidebarStackView.translatesAutoresizingMaskIntoConstraints = false
+        tabButtons = [:]
 
         let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton, removeFunctionButton])
         customFunctionsHeader.orientation = .horizontal
@@ -217,56 +231,42 @@ final class PreferencesWindowController: NSObject {
         addFunctionButton.setContentHuggingPriority(.required, for: .horizontal)
         removeFunctionButton.setContentHuggingPriority(.required, for: .horizontal)
 
-        contentStackView.addArrangedSubview(titleField)
-        contentStackView.addArrangedSubview(descriptionField)
-        contentStackView.addArrangedSubview(Self.makeSliderRow(
+        let generalStackView = Self.makeContentStackView()
+        generalStackView.addArrangedSubview(titleField)
+        generalStackView.addArrangedSubview(descriptionField)
+        generalStackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
+        generalStackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
+        generalStackView.addArrangedSubview(streamingToggle)
+
+        let popupStackView = Self.makeContentStackView()
+        popupStackView.addArrangedSubview(Self.makeSliderRow(
             labelField: popupFontSizeLabelField,
             slider: popupFontSizeSlider,
             valueField: popupFontSizeValueField
         ))
-        contentStackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
-        contentStackView.addArrangedSubview(Self.makeRow(labelField: popupShortcutLabelField, field: popupShortcutField))
-        contentStackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
-        contentStackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
-        contentStackView.addArrangedSubview(streamingToggle)
-        contentStackView.addArrangedSubview(customFunctionsHeader)
-        contentStackView.addArrangedSubview(customFunctionsDescriptionField)
-        contentStackView.addArrangedSubview(customFunctionsTableScrollView)
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_HEIGHT", field: popupMaxHeightField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
-        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
+        popupStackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
+        popupStackView.addArrangedSubview(Self.makeRow(labelField: popupShortcutLabelField, field: popupShortcutField))
+        popupStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
+        popupStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_HEIGHT", field: popupMaxHeightField))
 
-        scrollView = NSScrollView()
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.borderType = .noBorder
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = contentStackView
+        let functionsStackView = Self.makeContentStackView()
+        functionsStackView.addArrangedSubview(customFunctionsHeader)
+        functionsStackView.addArrangedSubview(customFunctionsDescriptionField)
+        functionsStackView.addArrangedSubview(customFunctionsTableScrollView)
 
-        contentView.addSubview(scrollView)
+        let advancedStackView = Self.makeContentStackView()
+        advancedStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
+        advancedStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
+        advancedStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
 
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            contentStackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            contentStackView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            contentStackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            contentStackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
-            contentStackView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
-        ])
+        let apiStackView = Self.makeContentStackView()
+        apiStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
+        apiStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
 
         customFunctionsTableScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -277,6 +277,15 @@ final class PreferencesWindowController: NSObject {
         window.contentView = contentView
 
         super.init()
+        configureTabs(
+            in: contentView,
+            generalStackView: generalStackView,
+            popupStackView: popupStackView,
+            functionsStackView: functionsStackView,
+            advancedStackView: advancedStackView,
+            apiStackView: apiStackView
+        )
+        selectTab(.general)
         popupFontSizeSlider.target = self
         popupFontSizeSlider.action = #selector(handleFontSizeChange(_:))
         apiKeyField.target = self
@@ -338,7 +347,7 @@ final class PreferencesWindowController: NSObject {
         refreshValues()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        window.makeFirstResponder(apiKeyField)
+        window.makeFirstResponder(languagePopUp)
     }
 
     private func refreshValues() {
@@ -368,6 +377,17 @@ final class PreferencesWindowController: NSObject {
     private func applyStrings() {
         titleField.stringValue = UIStrings.Preferences.title
         descriptionField.stringValue = UIStrings.Preferences.description
+        tabButtons[.general]?.title = UIStrings.Preferences.tabGeneral
+        tabButtons[.popup]?.title = UIStrings.Preferences.tabPopup
+        tabButtons[.functions]?.title = UIStrings.Preferences.tabFunctions
+        tabButtons[.advanced]?.title = UIStrings.Preferences.tabAdvanced
+        tabButtons[.api]?.title = UIStrings.Preferences.tabAPI
+        for item in tabView.tabViewItems {
+            guard let tab = item.identifier as? PreferencesTab else {
+                continue
+            }
+            item.label = tabTitle(for: tab)
+        }
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
         popupTooltipDelayLabelField.stringValue = UIStrings.Preferences.popupTooltipDelayLabel
         popupShortcutLabelField.stringValue = UIStrings.Preferences.popupShortcutLabel
@@ -388,6 +408,124 @@ final class PreferencesWindowController: NSObject {
         }
         window.title = UIStrings.Preferences.title
         reloadCustomFunctions()
+    }
+
+    private func tabTitle(for tab: PreferencesTab) -> String {
+        switch tab {
+        case .general:
+            return UIStrings.Preferences.tabGeneral
+        case .popup:
+            return UIStrings.Preferences.tabPopup
+        case .functions:
+            return UIStrings.Preferences.tabFunctions
+        case .advanced:
+            return UIStrings.Preferences.tabAdvanced
+        case .api:
+            return UIStrings.Preferences.tabAPI
+        }
+    }
+
+    private func selectTab(_ tab: PreferencesTab) {
+        if tab.rawValue < tabView.numberOfTabViewItems {
+            let item = tabView.tabViewItem(at: tab.rawValue)
+            tabView.selectTabViewItem(item)
+        }
+        for (key, button) in tabButtons {
+            button.state = key == tab ? .on : .off
+        }
+    }
+
+    private func configureTabs(
+        in contentView: NSView,
+        generalStackView: NSStackView,
+        popupStackView: NSStackView,
+        functionsStackView: NSStackView,
+        advancedStackView: NSStackView,
+        apiStackView: NSStackView
+    ) {
+        for tab in PreferencesTab.allCases {
+            let button = makeTabButton(for: tab)
+            tabButtons[tab] = button
+            sidebarStackView.addArrangedSubview(button)
+            button.leadingAnchor.constraint(equalTo: sidebarStackView.leadingAnchor).isActive = true
+            button.trailingAnchor.constraint(equalTo: sidebarStackView.trailingAnchor).isActive = true
+        }
+
+        tabView.addTabViewItem(makeTabViewItem(for: .general, contentView: makeTabContentView(generalStackView)))
+        tabView.addTabViewItem(makeTabViewItem(for: .popup, contentView: makeTabContentView(popupStackView)))
+        tabView.addTabViewItem(makeTabViewItem(for: .functions, contentView: makeTabContentView(functionsStackView)))
+        tabView.addTabViewItem(makeTabViewItem(for: .advanced, contentView: makeTabContentView(advancedStackView)))
+        tabView.addTabViewItem(makeTabViewItem(for: .api, contentView: makeTabContentView(apiStackView)))
+
+        contentView.addSubview(sidebarStackView)
+        contentView.addSubview(tabView)
+
+        NSLayoutConstraint.activate([
+            sidebarStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            sidebarStackView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebarStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarStackView.widthAnchor.constraint(equalToConstant: 160),
+            tabView.leadingAnchor.constraint(equalTo: sidebarStackView.trailingAnchor, constant: 8),
+            tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            tabView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            tabView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        ])
+    }
+
+    private func makeTabViewItem(for tab: PreferencesTab, contentView: NSView) -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: tab)
+        item.label = tabTitle(for: tab)
+        item.view = contentView
+        return item
+    }
+
+    private func makeTabButton(for tab: PreferencesTab) -> NSButton {
+        let button = NSButton(title: tabTitle(for: tab), target: self, action: #selector(handleTabButton(_:)))
+        button.setButtonType(.toggle)
+        button.bezelStyle = .texturedRounded
+        button.controlSize = .regular
+        button.alignment = .left
+        button.tag = tab.rawValue
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    private static func makeContentStackView() -> NSStackView {
+        let stackView = NSStackView()
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 10
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        return stackView
+    }
+
+    private func makeTabContentView(_ stackView: NSStackView) -> NSView {
+        let container = NSView()
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = stackView
+
+        container.addSubview(scrollView)
+
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
+            stackView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
+        ])
+
+        return container
     }
 
     private static func makeValueField() -> NSTextField {
@@ -465,6 +603,13 @@ final class PreferencesWindowController: NSObject {
         if !functions.isEmpty, customFunctionsTableView.selectedRow == -1 {
             customFunctionsTableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
+    }
+
+    @objc private func handleTabButton(_ sender: NSButton) {
+        guard let tab = PreferencesTab(rawValue: sender.tag) else {
+            return
+        }
+        selectTab(tab)
     }
 
     @objc private func handleAddFunction(_ sender: Any?) {
