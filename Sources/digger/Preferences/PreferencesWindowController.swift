@@ -26,28 +26,17 @@ final class PreferencesWindowController: NSObject {
     private let customFunctionsTitleField: NSTextField
     private let customFunctionsDescriptionField: NSTextField
     private let addFunctionButton: NSButton
-    private let customFunctionsStack: NSStackView
+    private let removeFunctionButton: NSButton
+    private let customFunctionsTableView: NSTableView
+    private let customFunctionsTableScrollView: NSScrollView
     private let contentStackView: NSStackView
     private let scrollView: NSScrollView
-    private var customFunctionsStackWidthConstraint: NSLayoutConstraint?
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
     private let onCustomFunctionsChange: () -> Void
     nonisolated(unsafe) private var mouseDownMonitor: Any?
-    private var functionFieldBindings: [ObjectIdentifier: FunctionFieldBinding] = [:]
-    private var removeButtonBindings: [ObjectIdentifier: UUID] = [:]
-
-    private struct FunctionFieldBinding {
-        let id: UUID
-        let kind: FunctionFieldKind
-    }
-
-    private enum FunctionFieldKind {
-        case title
-        case prompt
-    }
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
@@ -159,16 +148,43 @@ final class PreferencesWindowController: NSObject {
         customFunctionsDescriptionField = NSTextField(wrappingLabelWithString: UIStrings.Preferences.customFunctionsDescription)
         customFunctionsDescriptionField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
         customFunctionsDescriptionField.textColor = .secondaryLabelColor
-        addFunctionButton = NSButton(title: UIStrings.Preferences.addFunction, target: nil, action: nil)
-        addFunctionButton.bezelStyle = .rounded
+        addFunctionButton = NSButton(title: "+", target: nil, action: nil)
+        addFunctionButton.bezelStyle = .texturedRounded
         addFunctionButton.controlSize = .small
-        customFunctionsStack = NSStackView()
-        customFunctionsStack.orientation = .vertical
-        customFunctionsStack.alignment = .leading
-        customFunctionsStack.spacing = 10
-        customFunctionsStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        customFunctionsStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        customFunctionsStack.translatesAutoresizingMaskIntoConstraints = false
+        removeFunctionButton = NSButton(title: "-", target: nil, action: nil)
+        removeFunctionButton.bezelStyle = .texturedRounded
+        removeFunctionButton.controlSize = .small
+        removeFunctionButton.isEnabled = false
+
+        customFunctionsTableView = NSTableView()
+        customFunctionsTableView.allowsMultipleSelection = false
+        customFunctionsTableView.allowsColumnSelection = false
+        customFunctionsTableView.headerView = nil
+        customFunctionsTableView.usesAlternatingRowBackgroundColors = true
+        customFunctionsTableView.rowSizeStyle = .default
+
+        let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
+        titleColumn.title = UIStrings.Preferences.functionTitleLabel
+        titleColumn.resizingMask = .userResizingMask
+        titleColumn.minWidth = 120
+        titleColumn.width = 160
+
+        let promptColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("prompt"))
+        promptColumn.title = UIStrings.Preferences.functionPromptLabel
+        promptColumn.resizingMask = .autoresizingMask
+        promptColumn.minWidth = 220
+
+        customFunctionsTableView.addTableColumn(titleColumn)
+        customFunctionsTableView.addTableColumn(promptColumn)
+
+        customFunctionsTableScrollView = NSScrollView()
+        customFunctionsTableScrollView.drawsBackground = false
+        customFunctionsTableScrollView.hasVerticalScroller = true
+        customFunctionsTableScrollView.hasHorizontalScroller = false
+        customFunctionsTableScrollView.autohidesScrollers = true
+        customFunctionsTableScrollView.borderType = .bezelBorder
+        customFunctionsTableScrollView.translatesAutoresizingMaskIntoConstraints = false
+        customFunctionsTableScrollView.documentView = customFunctionsTableView
 
         contentStackView = NSStackView()
         contentStackView.orientation = .vertical
@@ -177,12 +193,13 @@ final class PreferencesWindowController: NSObject {
         contentStackView.translatesAutoresizingMaskIntoConstraints = false
         contentStackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
 
-        let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton])
+        let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton, removeFunctionButton])
         customFunctionsHeader.orientation = .horizontal
         customFunctionsHeader.alignment = .centerY
         customFunctionsHeader.spacing = 8
         customFunctionsTitleField.setContentHuggingPriority(.required, for: .horizontal)
         addFunctionButton.setContentHuggingPriority(.required, for: .horizontal)
+        removeFunctionButton.setContentHuggingPriority(.required, for: .horizontal)
 
         contentStackView.addArrangedSubview(titleField)
         contentStackView.addArrangedSubview(descriptionField)
@@ -197,7 +214,7 @@ final class PreferencesWindowController: NSObject {
         contentStackView.addArrangedSubview(streamingToggle)
         contentStackView.addArrangedSubview(customFunctionsHeader)
         contentStackView.addArrangedSubview(customFunctionsDescriptionField)
-        contentStackView.addArrangedSubview(customFunctionsStack)
+        contentStackView.addArrangedSubview(customFunctionsTableScrollView)
         contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
         contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
         contentStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
@@ -229,10 +246,7 @@ final class PreferencesWindowController: NSObject {
             contentStackView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
         ])
 
-        let widthConstraint = customFunctionsStack.widthAnchor.constraint(equalTo: contentStackView.widthAnchor)
-        widthConstraint.priority = .defaultHigh
-        widthConstraint.isActive = true
-        customFunctionsStackWidthConstraint = widthConstraint
+        customFunctionsTableScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
@@ -272,6 +286,11 @@ final class PreferencesWindowController: NSObject {
         streamingToggle.action = #selector(handleStreamingToggle(_:))
         addFunctionButton.target = self
         addFunctionButton.action = #selector(handleAddFunction(_:))
+        removeFunctionButton.target = self
+        removeFunctionButton.action = #selector(handleRemoveFunction(_:))
+
+        customFunctionsTableView.dataSource = self
+        customFunctionsTableView.delegate = self
 
         apiKeyField.delegate = self
         endpointField.delegate = self
@@ -338,7 +357,15 @@ final class PreferencesWindowController: NSObject {
         streamingToggle.title = UIStrings.Preferences.streamingLabel
         customFunctionsTitleField.stringValue = UIStrings.Preferences.customFunctionsTitle
         customFunctionsDescriptionField.stringValue = UIStrings.Preferences.customFunctionsDescription
-        addFunctionButton.title = UIStrings.Preferences.addFunction
+        addFunctionButton.title = "+"
+        removeFunctionButton.title = "-"
+        for column in customFunctionsTableView.tableColumns {
+            if column.identifier.rawValue == "title" {
+                column.title = UIStrings.Preferences.functionTitleLabel
+            } else if column.identifier.rawValue == "prompt" {
+                column.title = UIStrings.Preferences.functionPromptLabel
+            }
+        }
         window.title = UIStrings.Preferences.title
         reloadCustomFunctions()
     }
@@ -412,95 +439,12 @@ final class PreferencesWindowController: NSObject {
     }
 
     private func reloadCustomFunctions(_ functionsOverride: [CustomFunction]? = nil) {
-        customFunctionsStack.arrangedSubviews.forEach {
-            customFunctionsStack.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
-        functionFieldBindings.removeAll()
-        removeButtonBindings.removeAll()
-
         let functions = functionsOverride ?? AppPreferences.customFunctions()
-        customFunctionsStack.isHidden = functions.isEmpty
-        guard !functions.isEmpty else {
-            return
+        removeFunctionButton.isEnabled = customFunctionsTableView.selectedRow >= 0
+        customFunctionsTableView.reloadData()
+        if !functions.isEmpty, customFunctionsTableView.selectedRow == -1 {
+            customFunctionsTableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
-
-        for function in functions {
-            let row = makeCustomFunctionRow(function)
-            customFunctionsStack.addArrangedSubview(row)
-        }
-        customFunctionsStack.invalidateIntrinsicContentSize()
-        contentStackView.invalidateIntrinsicContentSize()
-        customFunctionsStack.needsLayout = true
-        customFunctionsStack.layoutSubtreeIfNeeded()
-        customFunctionsStack.superview?.needsLayout = true
-        customFunctionsStack.superview?.layoutSubtreeIfNeeded()
-        window.contentView?.layoutSubtreeIfNeeded()
-    }
-
-    private func makeCustomFunctionRow(_ function: CustomFunction) -> NSStackView {
-        let labelWidth: CGFloat = 56
-        let titleLabel = NSTextField(labelWithString: UIStrings.Preferences.functionTitleLabel)
-        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        titleLabel.textColor = .secondaryLabelColor
-        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
-        titleLabel.widthAnchor.constraint(equalToConstant: labelWidth).isActive = true
-
-        let promptLabel = NSTextField(labelWithString: UIStrings.Preferences.functionPromptLabel)
-        promptLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        promptLabel.textColor = .secondaryLabelColor
-        promptLabel.setContentHuggingPriority(.required, for: .horizontal)
-        promptLabel.widthAnchor.constraint(equalToConstant: labelWidth).isActive = true
-
-        let titleField = NSTextField()
-        titleField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        titleField.isEditable = true
-        titleField.isSelectable = true
-        titleField.placeholderString = UIStrings.Preferences.functionTitlePlaceholder
-        titleField.stringValue = function.title
-        titleField.delegate = self
-        titleField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        titleField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        functionFieldBindings[ObjectIdentifier(titleField)] = FunctionFieldBinding(id: function.id, kind: .title)
-
-        let promptField = NSTextField()
-        promptField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        promptField.isEditable = true
-        promptField.isSelectable = true
-        promptField.placeholderString = UIStrings.Preferences.functionPromptPlaceholder
-        promptField.stringValue = function.prompt
-        promptField.delegate = self
-        promptField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        promptField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        functionFieldBindings[ObjectIdentifier(promptField)] = FunctionFieldBinding(id: function.id, kind: .prompt)
-
-        let removeButton = NSButton(title: UIStrings.Preferences.removeFunction, target: self, action: #selector(handleRemoveFunction(_:)))
-        removeButton.bezelStyle = .rounded
-        removeButton.controlSize = .small
-        removeButton.setContentHuggingPriority(.required, for: .horizontal)
-        removeButtonBindings[ObjectIdentifier(removeButton)] = function.id
-
-        let titleRow = NSStackView(views: [titleLabel, titleField])
-        titleRow.orientation = .horizontal
-        titleRow.alignment = .centerY
-        titleRow.spacing = 8
-
-        let promptRow = NSStackView(views: [promptLabel, promptField])
-        promptRow.orientation = .horizontal
-        promptRow.alignment = .centerY
-        promptRow.spacing = 8
-
-        let removeRow = NSStackView(views: [NSView(), removeButton])
-        removeRow.orientation = .horizontal
-        removeRow.alignment = .centerY
-
-        let row = NSStackView(views: [titleRow, promptRow, removeRow])
-        row.orientation = .vertical
-        row.alignment = .leading
-        row.spacing = 6
-        row.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        row.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return row
     }
 
     @objc private func handleAddFunction(_ sender: Any?) {
@@ -510,33 +454,23 @@ final class PreferencesWindowController: NSObject {
         functions.append(newFunction)
         AppPreferences.setCustomFunctions(functions)
         reloadCustomFunctions(functions)
+        let newRow = max(0, functions.count - 1)
+        customFunctionsTableView.selectRowIndexes(IndexSet(integer: newRow), byExtendingSelection: false)
+        customFunctionsTableView.scrollRowToVisible(newRow)
         onCustomFunctionsChange()
     }
 
     @objc private func handleRemoveFunction(_ sender: Any?) {
-        guard let button = sender as? NSButton,
-              let functionID = removeButtonBindings[ObjectIdentifier(button)] else {
+        let selectedRow = customFunctionsTableView.selectedRow
+        guard selectedRow >= 0 else {
             return
         }
         var functions = AppPreferences.customFunctions()
-        functions.removeAll { $0.id == functionID }
+        if selectedRow < functions.count {
+            functions.remove(at: selectedRow)
+        }
         AppPreferences.setCustomFunctions(functions)
         reloadCustomFunctions(functions)
-        onCustomFunctionsChange()
-    }
-
-    private func updateCustomFunction(id: UUID, kind: FunctionFieldKind, value: String) {
-        var functions = AppPreferences.customFunctions()
-        guard let index = functions.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-        switch kind {
-        case .title:
-            functions[index].title = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .prompt:
-            functions[index].prompt = value
-        }
-        AppPreferences.setCustomFunctions(functions)
         onCustomFunctionsChange()
     }
 
@@ -700,8 +634,23 @@ extension PreferencesWindowController: NSTextFieldDelegate {
         guard let field = obj.object as? NSTextField else {
             return
         }
-        if let binding = functionFieldBindings[ObjectIdentifier(field)] {
-            updateCustomFunction(id: binding.id, kind: binding.kind, value: field.stringValue)
+        if customFunctionsTableView.row(for: field) != -1 {
+            let row = customFunctionsTableView.row(for: field)
+            let column = customFunctionsTableView.column(for: field)
+            let functions = AppPreferences.customFunctions()
+            guard row >= 0, row < functions.count else {
+                return
+            }
+            var updated = functions[row]
+            if column == 0 {
+                updated.title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                updated.prompt = field.stringValue
+            }
+            var newFunctions = functions
+            newFunctions[row] = updated
+            AppPreferences.setCustomFunctions(newFunctions)
+            onCustomFunctionsChange()
             if shouldResignFocusOnEndEditing(obj) {
                 window.makeFirstResponder(nil)
             }
@@ -738,5 +687,57 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             return true
         }
         return false
+    }
+}
+
+extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegate {
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        AppPreferences.customFunctions().count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let functions = AppPreferences.customFunctions()
+        guard row >= 0, row < functions.count, let tableColumn else {
+            return nil
+        }
+
+        let identifier = tableColumn.identifier
+        let cellIdentifier = NSUserInterfaceItemIdentifier("CustomFunctionCell_\(identifier.rawValue)")
+        let cellView: NSTableCellView
+        if let reused = tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView {
+            cellView = reused
+        } else {
+            cellView = NSTableCellView()
+            cellView.identifier = cellIdentifier
+            let textField = NSTextField()
+            textField.isEditable = true
+            textField.isSelectable = true
+            textField.isBordered = true
+            textField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+            textField.delegate = self
+            textField.translatesAutoresizingMaskIntoConstraints = false
+            cellView.addSubview(textField)
+            cellView.textField = textField
+            NSLayoutConstraint.activate([
+                textField.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
+                textField.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
+                textField.centerYAnchor.constraint(equalTo: cellView.centerYAnchor)
+            ])
+        }
+
+        if let textField = cellView.textField {
+            if identifier.rawValue == "title" {
+                textField.placeholderString = UIStrings.Preferences.functionTitlePlaceholder
+                textField.stringValue = functions[row].title
+            } else {
+                textField.placeholderString = UIStrings.Preferences.functionPromptPlaceholder
+                textField.stringValue = functions[row].prompt
+            }
+        }
+        return cellView
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        removeFunctionButton.isEnabled = customFunctionsTableView.selectedRow >= 0
     }
 }
