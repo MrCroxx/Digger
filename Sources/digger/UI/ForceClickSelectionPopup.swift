@@ -157,6 +157,11 @@ final class ForceClickSelectionPopup {
     private let baseTooltipSize: CGFloat = 11
     private var functionSections: [FunctionSection] = []
     private var functionIDs: [UUID] = []
+    private var layoutUpdateTimer: Timer?
+    private var pendingLayoutLocation: CGPoint?
+    private var pendingLayoutAnimate = false
+    private var lastWindowFrame: NSRect?
+    private let layoutDebounceInterval: TimeInterval = 0.08
 
     private struct FunctionSection {
         let function: PopupFunction
@@ -271,6 +276,7 @@ final class ForceClickSelectionPopup {
 
         currentRequestID = requestID
         lastAnchorLocation = location
+        cancelPendingLayoutUpdate()
         originalTextField.stringValue = trimmedOriginal
         configureFunctionSections(functions)
         for index in functionSections.indices {
@@ -294,16 +300,7 @@ final class ForceClickSelectionPopup {
         lastAnchorLocation = location
         updateFunctionSection(functionID: functionID, text: updatedResult, isFinal: isFinal)
         updateActionButtons()
-        let contentSize = layoutContent(near: location)
-        if isFinal {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                setWindowFrame(contentSize: contentSize, near: location, animated: true)
-            }
-        } else {
-            setWindowFrame(contentSize: contentSize, near: location, animated: false)
-        }
+        scheduleLayoutUpdate(near: location, animated: isFinal)
     }
 
     func applyPopupTextSize(_ textSize: CGFloat) {
@@ -337,6 +334,7 @@ final class ForceClickSelectionPopup {
         guard window.isVisible, let location = lastAnchorLocation else {
             return
         }
+        cancelPendingLayoutUpdate()
         let contentSize = layoutContent(near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
     }
@@ -419,7 +417,6 @@ final class ForceClickSelectionPopup {
     }
 
     private func layoutContent(near location: CGPoint?) -> CGSize {
-        let previousScrollOrigin = scrollView.contentView.bounds.origin
 
         let padding = CGSize(width: 10, height: 8)
         let minWidth: CGFloat = 120
@@ -628,11 +625,6 @@ final class ForceClickSelectionPopup {
         scrollView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: visibleHeight)
         headerView.frame = NSRect(x: 0, y: visibleHeight, width: contentWidth, height: headerHeight)
         scrollView.hasVerticalScroller = needsVerticalScroll
-        let maxScrollY = max(0, contentHeight - visibleHeight)
-        let bottomY = scrollView.contentView.isFlipped ? maxScrollY : 0
-        scrollView.contentView.scroll(to: NSPoint(x: previousScrollOrigin.x, y: bottomY))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-
         let buttonSize: CGFloat = 18
         let buttonSpacing: CGFloat = 6
         let buttonsWidth = CGFloat(actionButtons.count) * buttonSize + CGFloat(max(0, actionButtons.count - 1)) * buttonSpacing
@@ -653,11 +645,65 @@ final class ForceClickSelectionPopup {
         )
         let clampedOrigin = clampOrigin(origin, for: contentSize, near: location)
         let frame = NSRect(origin: clampedOrigin, size: contentSize)
+        if let last = lastWindowFrame,
+           abs(last.origin.x - frame.origin.x) < 0.5,
+           abs(last.origin.y - frame.origin.y) < 0.5,
+           abs(last.size.width - frame.size.width) < 0.5,
+           abs(last.size.height - frame.size.height) < 0.5 {
+            return
+        }
         if animated {
             window.animator().setFrame(frame, display: true)
         } else {
             window.setFrame(frame, display: true)
         }
+        lastWindowFrame = frame
+    }
+
+    private func scheduleLayoutUpdate(near location: CGPoint, animated: Bool) {
+        guard window.isVisible else {
+            return
+        }
+        pendingLayoutLocation = location
+        pendingLayoutAnimate = pendingLayoutAnimate || animated
+        if animated {
+            performPendingLayoutUpdate()
+            return
+        }
+        if layoutUpdateTimer == nil {
+            layoutUpdateTimer = Timer.scheduledTimer(withTimeInterval: layoutDebounceInterval, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    self?.performPendingLayoutUpdate()
+                }
+            }
+        }
+    }
+
+    private func performPendingLayoutUpdate() {
+        guard let location = pendingLayoutLocation else {
+            return
+        }
+        let animate = pendingLayoutAnimate
+        pendingLayoutAnimate = false
+        layoutUpdateTimer?.invalidate()
+        layoutUpdateTimer = nil
+        let contentSize = layoutContent(near: location)
+        if animate {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                setWindowFrame(contentSize: contentSize, near: location, animated: true)
+            }
+        } else {
+            setWindowFrame(contentSize: contentSize, near: location, animated: false)
+        }
+    }
+
+    private func cancelPendingLayoutUpdate() {
+        layoutUpdateTimer?.invalidate()
+        layoutUpdateTimer = nil
+        pendingLayoutLocation = nil
+        pendingLayoutAnimate = false
     }
 
     private func startLoadingAnimation() {
@@ -870,6 +916,7 @@ final class ForceClickSelectionPopup {
         guard window.isVisible else {
             return
         }
+        cancelPendingLayoutUpdate()
         stopLoadingAnimation()
         window.orderOut(nil)
     }
@@ -879,6 +926,7 @@ final class ForceClickSelectionPopup {
             return
         }
         if !isLocationInsideWindow(location) {
+            cancelPendingLayoutUpdate()
             stopLoadingAnimation()
             window.orderOut(nil)
         }
