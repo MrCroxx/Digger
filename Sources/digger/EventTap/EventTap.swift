@@ -35,6 +35,10 @@ final class EventTapController {
                     forceClickSelectionPopup.dismissOnEscape()
                 }
             }
+            if !isPopupOrPreferencesFocused, shouldTriggerShortcut(event: event) {
+                selectionHandler.handleForceClick()
+                return nil
+            }
         case .leftMouseDown, .rightMouseDown:
             let location = NSEvent.mouseLocation
             Task { @MainActor in
@@ -65,6 +69,15 @@ final class EventTapController {
         }
 
         return Unmanaged.passRetained(event)
+    }
+
+    private func shouldTriggerShortcut(event: CGEvent) -> Bool {
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        if isRepeat {
+            return false
+        }
+        let shortcut = AppPreferences.popupShortcut()
+        return shortcut.matches(event: event)
     }
 
     @MainActor

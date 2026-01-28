@@ -16,6 +16,8 @@ final class PreferencesWindowController: NSObject {
     private let popupTooltipDelayField: NSTextField
     private let popupFontSizeLabelField: NSTextField
     private let popupTooltipDelayLabelField: NSTextField
+    private let popupShortcutLabelField: NSTextField
+    private let popupShortcutField: ShortcutRecorderField
     private let languageLabelField: NSTextField
     private let targetLanguageLabelField: NSTextField
     private let languagePopUp: NSPopUpButton
@@ -105,6 +107,20 @@ final class PreferencesWindowController: NSObject {
         popupTooltipDelayLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupTooltipDelayLabel)
         popupTooltipDelayLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         popupTooltipDelayLabelField.textColor = .secondaryLabelColor
+        popupShortcutLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupShortcutLabel)
+        popupShortcutLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupShortcutLabelField.textColor = .secondaryLabelColor
+        popupShortcutField = ShortcutRecorderField()
+        popupShortcutField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupShortcutField.isEditable = true
+        popupShortcutField.isSelectable = false
+        popupShortcutField.isBordered = true
+        popupShortcutField.focusRingType = .default
+        popupShortcutField.placeholderString = UIStrings.Preferences.popupShortcutPlaceholder
+        popupShortcutField.currentShortcut = AppPreferences.popupShortcut()
+        popupShortcutField.onShortcutChange = { shortcut in
+            AppPreferences.setPopupShortcut(shortcut)
+        }
         languageLabelField = NSTextField(labelWithString: UIStrings.Preferences.languageLabel)
         languageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         languageLabelField.textColor = .secondaryLabelColor
@@ -209,6 +225,7 @@ final class PreferencesWindowController: NSObject {
             valueField: popupFontSizeValueField
         ))
         contentStackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
+        contentStackView.addArrangedSubview(Self.makeRow(labelField: popupShortcutLabelField, field: popupShortcutField))
         contentStackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
         contentStackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
         contentStackView.addArrangedSubview(streamingToggle)
@@ -333,6 +350,7 @@ final class PreferencesWindowController: NSObject {
         popupMaxWidthField.stringValue = String(format: "%.0f", AppPreferences.popupMaxWidth())
         popupMaxHeightField.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
         popupTooltipDelayField.stringValue = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
+        popupShortcutField.currentShortcut = AppPreferences.popupShortcut()
         streamingToggle.state = AppPreferences.translationStreamingEnabled() ? .on : .off
         if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
             languagePopUp.selectItem(at: index)
@@ -352,6 +370,8 @@ final class PreferencesWindowController: NSObject {
         descriptionField.stringValue = UIStrings.Preferences.description
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
         popupTooltipDelayLabelField.stringValue = UIStrings.Preferences.popupTooltipDelayLabel
+        popupShortcutLabelField.stringValue = UIStrings.Preferences.popupShortcutLabel
+        popupShortcutField.placeholderString = UIStrings.Preferences.popupShortcutPlaceholder
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
         targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
         streamingToggle.title = UIStrings.Preferences.streamingLabel
