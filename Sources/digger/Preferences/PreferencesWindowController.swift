@@ -41,6 +41,9 @@ final class PreferencesWindowController: NSObject {
     private let customFunctionsTableScrollView: NSScrollView
     private let tabView: NSTabView
     private let sidebarStackView: NSStackView
+    private let sidebarBackgroundView: NSVisualEffectView
+    private let contentBackgroundView: NSVisualEffectView
+    private let sidebarDivider: NSBox
     private var tabButtons: [PreferencesTab: NSButton]
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
@@ -48,6 +51,8 @@ final class PreferencesWindowController: NSObject {
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
     private let onCustomFunctionsChange: () -> Void
     nonisolated(unsafe) private var mouseDownMonitor: Any?
+
+    private static let sidebarWidth: CGFloat = 184
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
@@ -67,7 +72,7 @@ final class PreferencesWindowController: NSObject {
         contentView.wantsLayer = true
 
         titleField = NSTextField(labelWithString: UIStrings.Preferences.title)
-        titleField.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleField.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
         titleField.textColor = .labelColor
 
         descriptionField = NSTextField(wrappingLabelWithString: UIStrings.Preferences.description)
@@ -75,52 +80,61 @@ final class PreferencesWindowController: NSObject {
         descriptionField.textColor = .secondaryLabelColor
 
         apiKeyField = NSSecureTextField()
-        apiKeyField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        apiKeyField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        apiKeyField.controlSize = .small
         apiKeyField.placeholderString = "sk-..."
         apiKeyField.isEditable = true
         apiKeyField.isSelectable = true
         apiKeyField.isBordered = true
         apiKeyField.focusRingType = .default
         endpointField = NSTextField()
-        endpointField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        endpointField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        endpointField.controlSize = .small
         endpointField.placeholderString = "https://api.openai.com/v1"
         endpointField.isEditable = true
         endpointField.isSelectable = true
         thresholdField = NSTextField()
-        thresholdField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        thresholdField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        thresholdField.controlSize = .small
         thresholdField.isEditable = true
         thresholdField.isSelectable = true
         deltaField = NSTextField()
-        deltaField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        deltaField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        deltaField.controlSize = .small
         deltaField.isEditable = true
         deltaField.isSelectable = true
         windowField = NSTextField()
-        windowField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        windowField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        windowField.controlSize = .small
         windowField.isEditable = true
         windowField.isSelectable = true
         popupMaxWidthField = NSTextField()
-        popupMaxWidthField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupMaxWidthField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        popupMaxWidthField.controlSize = .small
         popupMaxWidthField.isEditable = true
         popupMaxWidthField.isSelectable = true
         popupMaxHeightField = NSTextField()
-        popupMaxHeightField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupMaxHeightField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        popupMaxHeightField.controlSize = .small
         popupMaxHeightField.isEditable = true
         popupMaxHeightField.isSelectable = true
         popupTooltipDelayField = NSTextField()
-        popupTooltipDelayField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupTooltipDelayField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        popupTooltipDelayField.controlSize = .small
         popupTooltipDelayField.isEditable = true
         popupTooltipDelayField.isSelectable = true
         popupFontSizeLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupFontSizeLabel)
-        popupFontSizeLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupFontSizeLabelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         popupFontSizeLabelField.textColor = .secondaryLabelColor
         popupTooltipDelayLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupTooltipDelayLabel)
-        popupTooltipDelayLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupTooltipDelayLabelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         popupTooltipDelayLabelField.textColor = .secondaryLabelColor
         popupShortcutLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupShortcutLabel)
-        popupShortcutLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupShortcutLabelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         popupShortcutLabelField.textColor = .secondaryLabelColor
         popupShortcutField = ShortcutRecorderField()
-        popupShortcutField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupShortcutField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        popupShortcutField.controlSize = .small
         popupShortcutField.isEditable = true
         popupShortcutField.isSelectable = false
         popupShortcutField.isBordered = true
@@ -131,20 +145,22 @@ final class PreferencesWindowController: NSObject {
             AppPreferences.setPopupShortcut(shortcut)
         }
         languageLabelField = NSTextField(labelWithString: UIStrings.Preferences.languageLabel)
-        languageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        languageLabelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         languageLabelField.textColor = .secondaryLabelColor
         languagePopUp = NSPopUpButton()
-        languagePopUp.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        languagePopUp.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        languagePopUp.controlSize = .small
         languagePopUp.isBordered = true
         for (index, language) in AppLanguage.allCases.enumerated() {
             languagePopUp.addItem(withTitle: language.displayName)
             languagePopUp.item(at: index)?.representedObject = language.rawValue
         }
         targetLanguageLabelField = NSTextField(labelWithString: UIStrings.Preferences.targetLanguageLabel)
-        targetLanguageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        targetLanguageLabelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         targetLanguageLabelField.textColor = .secondaryLabelColor
         targetLanguagePopUp = NSPopUpButton()
-        targetLanguagePopUp.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        targetLanguagePopUp.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        targetLanguagePopUp.controlSize = .small
         targetLanguagePopUp.isBordered = true
         for (index, language) in TranslationTargetLanguage.allCases.enumerated() {
             targetLanguagePopUp.addItem(withTitle: language.displayName)
@@ -160,18 +176,20 @@ final class PreferencesWindowController: NSObject {
         popupFontSizeSlider.numberOfTickMarks = Int(PopupFontPreferences.maxSize - PopupFontPreferences.minSize) + 1
         popupFontSizeSlider.allowsTickMarkValuesOnly = true
         popupFontSizeSlider.isContinuous = true
+        popupFontSizeSlider.controlSize = .small
         popupFontSizeValueField = PreferencesWindowController.makeValueField()
         popupFontSizeValueField.alignment = .right
         popupFontSizeValueField.stringValue = PopupFontPreferences.format(PopupFontPreferences.load())
 
         streamingToggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-        streamingToggle.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        streamingToggle.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        streamingToggle.controlSize = .small
 
         customFunctionsTitleField = NSTextField(labelWithString: UIStrings.Preferences.customFunctionsTitle)
-        customFunctionsTitleField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        customFunctionsTitleField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         customFunctionsTitleField.textColor = .labelColor
         customFunctionsDescriptionField = NSTextField(wrappingLabelWithString: UIStrings.Preferences.customFunctionsDescription)
-        customFunctionsDescriptionField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        customFunctionsDescriptionField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         customFunctionsDescriptionField.textColor = .secondaryLabelColor
         addFunctionButton = NSButton(title: "+", target: nil, action: nil)
         addFunctionButton.bezelStyle = .texturedRounded
@@ -185,8 +203,8 @@ final class PreferencesWindowController: NSObject {
         customFunctionsTableView.allowsMultipleSelection = false
         customFunctionsTableView.allowsColumnSelection = false
         customFunctionsTableView.headerView = nil
-        customFunctionsTableView.usesAlternatingRowBackgroundColors = true
-        customFunctionsTableView.rowSizeStyle = .default
+        customFunctionsTableView.usesAlternatingRowBackgroundColors = false
+        customFunctionsTableView.rowSizeStyle = .medium
 
         let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
         titleColumn.title = UIStrings.Preferences.functionTitleLabel
@@ -203,13 +221,18 @@ final class PreferencesWindowController: NSObject {
         customFunctionsTableView.addTableColumn(promptColumn)
 
         customFunctionsTableScrollView = NSScrollView()
-        customFunctionsTableScrollView.drawsBackground = false
+        customFunctionsTableScrollView.drawsBackground = true
         customFunctionsTableScrollView.hasVerticalScroller = true
         customFunctionsTableScrollView.hasHorizontalScroller = false
         customFunctionsTableScrollView.autohidesScrollers = true
-        customFunctionsTableScrollView.borderType = .bezelBorder
+        customFunctionsTableScrollView.borderType = .noBorder
         customFunctionsTableScrollView.translatesAutoresizingMaskIntoConstraints = false
         customFunctionsTableScrollView.documentView = customFunctionsTableView
+        customFunctionsTableScrollView.wantsLayer = true
+        customFunctionsTableScrollView.layer?.cornerRadius = 8
+        customFunctionsTableScrollView.layer?.masksToBounds = true
+        customFunctionsTableScrollView.backgroundColor = .controlBackgroundColor
+        customFunctionsTableView.backgroundColor = .clear
 
         tabView = NSTabView()
         tabView.tabViewType = .noTabsNoBorder
@@ -218,9 +241,22 @@ final class PreferencesWindowController: NSObject {
         sidebarStackView = NSStackView()
         sidebarStackView.orientation = .vertical
         sidebarStackView.alignment = .leading
-        sidebarStackView.spacing = 8
-        sidebarStackView.edgeInsets = NSEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        sidebarStackView.spacing = 4
+        sidebarStackView.edgeInsets = NSEdgeInsets(top: 20, left: 14, bottom: 20, right: 14)
         sidebarStackView.translatesAutoresizingMaskIntoConstraints = false
+        sidebarBackgroundView = NSVisualEffectView()
+        sidebarBackgroundView.material = .sidebar
+        sidebarBackgroundView.blendingMode = .behindWindow
+        sidebarBackgroundView.state = .active
+        sidebarBackgroundView.translatesAutoresizingMaskIntoConstraints = false
+        contentBackgroundView = NSVisualEffectView()
+        contentBackgroundView.material = .contentBackground
+        contentBackgroundView.blendingMode = .behindWindow
+        contentBackgroundView.state = .active
+        contentBackgroundView.translatesAutoresizingMaskIntoConstraints = false
+        sidebarDivider = NSBox()
+        sidebarDivider.boxType = .separator
+        sidebarDivider.translatesAutoresizingMaskIntoConstraints = false
         tabButtons = [:]
 
         let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton, removeFunctionButton])
@@ -266,7 +302,7 @@ final class PreferencesWindowController: NSObject {
         customFunctionsTableScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -275,6 +311,9 @@ final class PreferencesWindowController: NSObject {
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = contentView
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
 
         super.init()
         configureTabs(
@@ -432,6 +471,7 @@ final class PreferencesWindowController: NSObject {
         }
         for (key, button) in tabButtons {
             button.state = key == tab ? .on : .off
+            updateTabButtonAppearance(button, selected: key == tab)
         }
     }
 
@@ -457,15 +497,30 @@ final class PreferencesWindowController: NSObject {
         tabView.addTabViewItem(makeTabViewItem(for: .advanced, contentView: makeTabContentView(advancedStackView)))
         tabView.addTabViewItem(makeTabViewItem(for: .api, contentView: makeTabContentView(apiStackView)))
 
+        contentView.addSubview(contentBackgroundView)
+        contentView.addSubview(sidebarBackgroundView)
+        contentView.addSubview(sidebarDivider)
         contentView.addSubview(sidebarStackView)
         contentView.addSubview(tabView)
 
         NSLayoutConstraint.activate([
-            sidebarStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            sidebarBackgroundView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            sidebarBackgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebarBackgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarBackgroundView.widthAnchor.constraint(equalToConstant: Self.sidebarWidth),
+            sidebarDivider.leadingAnchor.constraint(equalTo: sidebarBackgroundView.trailingAnchor),
+            sidebarDivider.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebarDivider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarDivider.widthAnchor.constraint(equalToConstant: 1),
+            contentBackgroundView.leadingAnchor.constraint(equalTo: sidebarDivider.trailingAnchor),
+            contentBackgroundView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            contentBackgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            contentBackgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarStackView.leadingAnchor.constraint(equalTo: sidebarBackgroundView.leadingAnchor),
+            sidebarStackView.trailingAnchor.constraint(equalTo: sidebarBackgroundView.trailingAnchor),
             sidebarStackView.topAnchor.constraint(equalTo: contentView.topAnchor),
             sidebarStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            sidebarStackView.widthAnchor.constraint(equalToConstant: 160),
-            tabView.leadingAnchor.constraint(equalTo: sidebarStackView.trailingAnchor, constant: 8),
+            tabView.leadingAnchor.constraint(equalTo: sidebarDivider.trailingAnchor, constant: 12),
             tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             tabView.topAnchor.constraint(equalTo: contentView.topAnchor),
             tabView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
@@ -480,13 +535,29 @@ final class PreferencesWindowController: NSObject {
     }
 
     private func makeTabButton(for tab: PreferencesTab) -> NSButton {
-        let button = NSButton(title: tabTitle(for: tab), target: self, action: #selector(handleTabButton(_:)))
+        let button = SidebarButton(title: tabTitle(for: tab), target: self, action: #selector(handleTabButton(_:)))
         button.setButtonType(.toggle)
-        button.bezelStyle = .texturedRounded
-        button.controlSize = .regular
+        button.bezelStyle = .regularSquare
+        button.controlSize = .small
         button.alignment = .left
+        button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        button.isBordered = false
+        button.focusRingType = .none
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 9
+        button.layer?.borderWidth = 1
+        button.image = tabIcon(for: tab)
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
+        button.imageScaling = .scaleProportionallyDown
+        button.contentTintColor = .secondaryLabelColor
         button.tag = tab.rawValue
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        button.onHoverChange = { [weak self] updated in
+            self?.updateTabButtonAppearance(updated, selected: updated.state == .on)
+        }
+        updateTabButtonAppearance(button, selected: false)
         return button
     }
 
@@ -494,9 +565,9 @@ final class PreferencesWindowController: NSObject {
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
-        stackView.spacing = 10
+        stackView.spacing = 14
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stackView.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
         return stackView
     }
 
@@ -528,9 +599,43 @@ final class PreferencesWindowController: NSObject {
         return container
     }
 
+    private func updateTabButtonAppearance(_ button: NSButton, selected: Bool) {
+        let accent = NSColor.controlAccentColor
+        let isHovering = (button as? SidebarButton)?.isHovering ?? false
+        if selected {
+            button.contentTintColor = .labelColor
+            button.layer?.backgroundColor = accent.withAlphaComponent(0.22).cgColor
+            button.layer?.borderColor = accent.withAlphaComponent(0.5).cgColor
+        } else {
+            button.contentTintColor = isHovering ? .labelColor : .secondaryLabelColor
+            button.layer?.backgroundColor = isHovering
+                ? NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
+                : NSColor.windowBackgroundColor.withAlphaComponent(0.7).cgColor
+            button.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+        }
+    }
+
+    private func tabIcon(for tab: PreferencesTab) -> NSImage? {
+        let name: String
+        switch tab {
+        case .general:
+            name = "gearshape"
+        case .popup:
+            name = "rectangle.on.rectangle"
+        case .functions:
+            name = "function"
+        case .advanced:
+            name = "slider.horizontal.3"
+        case .api:
+            name = "key"
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+    }
+
     private static func makeValueField() -> NSTextField {
         let field = NSTextField(labelWithString: "")
-        field.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        field.font = NSFont.systemFont(ofSize: 13, weight: .regular)
         field.textColor = .labelColor
         field.lineBreakMode = .byTruncatingMiddle
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -540,7 +645,7 @@ final class PreferencesWindowController: NSObject {
 
     private static func makeRow(label: String, valueField: NSTextField) -> NSStackView {
         let labelField = NSTextField(labelWithString: label)
-        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        labelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         labelField.textColor = .secondaryLabelColor
         labelField.setContentHuggingPriority(.required, for: .horizontal)
         labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -566,7 +671,7 @@ final class PreferencesWindowController: NSObject {
 
     private static func makeEditRow(label: String, field: NSTextField) -> NSStackView {
         let labelField = NSTextField(labelWithString: label)
-        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        labelField.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         labelField.textColor = .secondaryLabelColor
         labelField.setContentHuggingPriority(.required, for: .horizontal)
         labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -790,6 +895,39 @@ final class PreferencesWindowController: NSObject {
     }
 }
 
+final class SidebarButton: NSButton {
+    var isHovering = false
+    var onHoverChange: ((SidebarButton) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isHovering = true
+        onHoverChange?(self)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isHovering = false
+        onHoverChange?(self)
+    }
+}
+
 extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         return
@@ -878,7 +1016,8 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             textField.isEditable = true
             textField.isSelectable = true
             textField.isBordered = true
-            textField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+            textField.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+            textField.controlSize = .small
             textField.delegate = self
             textField.translatesAutoresizingMaskIntoConstraints = false
             cellView.addSubview(textField)
