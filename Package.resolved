@@ -1,12 +1,39 @@
 {
-  "originHash" : "3932c19d421c0bad1eeea75ef21942fd8b9a3a1465e9a3c3b8ae8b8609605566",
+  "originHash" : "c98564eb1433e5c345d792fc41f0eccdaa011e31e3fba2c3edcd5c11ece9bdd6",
   "pins" : [
+    {
+      "identity" : "openai",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/MacPaw/OpenAI.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "4ed3ea99ff9dfd2a760509ddb31020f4b153ef93"
+      }
+    },
     {
       "identity" : "openmultitouchsupport",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Kyome22/OpenMultitouchSupport",
       "state" : {
         "revision" : "d7ec2276bea98711530dc610eb05563e9e1ce342"
+      }
+    },
+    {
+      "identity" : "swift-http-types",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-http-types",
+      "state" : {
+        "revision" : "45eb0224913ea070ec4fba17291b9e7ecf4749ca",
+        "version" : "1.5.1"
+      }
+    },
+    {
+      "identity" : "swift-openapi-runtime",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-openapi-runtime",
+      "state" : {
+        "revision" : "7cdf33371bf89b23b9cf4fd3ce8d3c825c28fbe8",
+        "version" : "1.9.0"
       }
     }
   ],

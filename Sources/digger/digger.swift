@@ -3,6 +3,7 @@ import AppKit
 import Carbon
 import Foundation
 import OpenMultitouchSupport
+import OpenAI
 import os
 
 private final class ForceClickMonitor {
@@ -96,27 +97,102 @@ private final class ForceClickMonitor {
     }
 }
 
+private actor OpenAITranslator {
+    private let client: OpenAI
+
+    init?(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        guard let token = environment["OPENAI_API_KEY"], !token.isEmpty else {
+            return nil
+        }
+
+        var host = "api.openai.com"
+        var basePath = "/v1"
+        var port = 443
+        var scheme = "https"
+        if let endpointText = environment["OPENAI_ENDPOINT"],
+           !endpointText.isEmpty,
+           let endpoint = URL(string: endpointText) {
+            if let endpointHost = endpoint.host {
+                host = endpointHost
+            }
+            if !endpoint.path.isEmpty {
+                basePath = endpoint.path
+            }
+            if let endpointScheme = endpoint.scheme {
+                scheme = endpointScheme
+            }
+            if let endpointPort = endpoint.port {
+                port = endpointPort
+            }
+        }
+
+        let configuration = OpenAI.Configuration(
+            token: token,
+            host: host,
+            port: port,
+            scheme: scheme,
+            basePath: basePath,
+            parsingOptions: .relaxed
+        )
+
+        client = OpenAI(configuration: configuration)
+    }
+
+    func translate(_ text: String) async throws -> String {
+        let query = ChatQuery(
+            messages: [
+                .system(.init(content: .textContent("Translate the user's text into Simplified Chinese. Preserve meaning, formatting, and proper nouns."))),
+                .user(.init(content: .string(text)))
+            ],
+            model: .gpt4_1_mini,
+            temperature: 0.2
+        )
+        let result = try await client.chats(query: query)
+        return result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+    }
+}
+
 private final class ForceClickSelectionHandler {
     private let systemElement = AXUIElementCreateSystemWide()
+    private let translator = OpenAITranslator()
 
     func handleForceClick() {
         guard let text = fetchOrSelectText(), !text.isEmpty else {
             if let fallbackText = copySelectionText(selectWordIfNeeded: true), !fallbackText.isEmpty {
                 print(fallbackText)
-                showPopup(for: fallbackText)
+                translateAndShow(text: fallbackText)
             }
             return
         }
         print(text)
-        showPopup(for: text)
+        translateAndShow(text: text)
     }
 
-    private func showPopup(for text: String) {
+    private func translateAndShow(text: String) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return
+        }
         guard let location = currentMouseLocation() else {
             return
         }
-        Task { @MainActor in
-            forceClickSelectionPopup.show(text: text, near: location)
+        let translator = self.translator
+        Task { [trimmedText, location] in
+            let translation: String
+            if let translator {
+                do {
+                    let result = try await translator.translate(trimmedText)
+                    translation = result.isEmpty ? "翻译结果为空" : result
+                } catch {
+                    translation = "翻译失败"
+                }
+            } else {
+                translation = "未检测到 OPENAI_API_KEY"
+            }
+            print("译文: \(translation)")
+            await MainActor.run {
+                forceClickSelectionPopup.show(original: trimmedText, translation: translation, near: location)
+            }
         }
     }
 
@@ -330,24 +406,64 @@ private final class DraggableContentView: NSView {
 @MainActor
 private final class ForceClickSelectionPopup {
     private let window: PopupWindow
-    private let textField: NSTextField
+    private let originalTitleField: NSTextField
+    private let originalTextField: NSTextField
+    private let translationTitleField: NSTextField
+    private let translationTextField: NSTextField
+    private let dividerView: NSView
+    private let contentView: DraggableContentView
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
-        textField = NSTextField(labelWithString: "")
-        textField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        textField.textColor = .labelColor
-        textField.backgroundColor = .clear
-        textField.isEditable = false
-        textField.isSelectable = false
-        textField.lineBreakMode = .byWordWrapping
-        textField.maximumNumberOfLines = 4
+        originalTitleField = NSTextField(labelWithString: "原文")
+        originalTitleField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        originalTitleField.textColor = .secondaryLabelColor
+        originalTitleField.backgroundColor = .clear
+        originalTitleField.isEditable = false
+        originalTitleField.isSelectable = false
 
-        let contentView = DraggableContentView()
+        originalTextField = NSTextField(labelWithString: "")
+        originalTextField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        originalTextField.textColor = .labelColor
+        originalTextField.backgroundColor = .clear
+        originalTextField.isEditable = false
+        originalTextField.isSelectable = false
+        originalTextField.lineBreakMode = .byWordWrapping
+        originalTextField.maximumNumberOfLines = 6
+        originalTextField.cell?.wraps = true
+        originalTextField.cell?.usesSingleLineMode = false
+
+        translationTitleField = NSTextField(labelWithString: "译文")
+        translationTitleField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        translationTitleField.textColor = .secondaryLabelColor
+        translationTitleField.backgroundColor = .clear
+        translationTitleField.isEditable = false
+        translationTitleField.isSelectable = false
+
+        translationTextField = NSTextField(labelWithString: "")
+        translationTextField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        translationTextField.textColor = .labelColor
+        translationTextField.backgroundColor = .clear
+        translationTextField.isEditable = false
+        translationTextField.isSelectable = false
+        translationTextField.lineBreakMode = .byWordWrapping
+        translationTextField.maximumNumberOfLines = 6
+        translationTextField.cell?.wraps = true
+        translationTextField.cell?.usesSingleLineMode = false
+
+        dividerView = NSView()
+        dividerView.wantsLayer = true
+        dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
+
+        contentView = DraggableContentView()
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
-        contentView.addSubview(textField)
+        contentView.addSubview(originalTitleField)
+        contentView.addSubview(originalTextField)
+        contentView.addSubview(dividerView)
+        contentView.addSubview(translationTitleField)
+        contentView.addSubview(translationTextField)
 
         window = PopupWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -368,13 +484,15 @@ private final class ForceClickSelectionPopup {
         }
     }
 
-    func show(text: String, near location: CGPoint) {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
+    func show(original: String, translation: String, near location: CGPoint) {
+        let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOriginal.isEmpty else {
             return
         }
 
-        textField.stringValue = trimmedText
+        originalTextField.stringValue = trimmedOriginal
+        translationTextField.stringValue = trimmedTranslation
         layoutContent()
 
         let offset = CGPoint(x: 12, y: -12)
@@ -391,28 +509,104 @@ private final class ForceClickSelectionPopup {
     private func layoutContent() {
         let padding = CGSize(width: 10, height: 8)
         let maxWidth: CGFloat = 320
-        let extraSize = CGSize(width: 10, height: 2)
-        let textMaxSize = CGSize(width: maxWidth - padding.width * 2, height: .greatestFiniteMagnitude)
-        let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font]
-        let boundingRect = (textField.stringValue as NSString).boundingRect(
-            with: textMaxSize,
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: attributes
+        let titleTextSpacing: CGFloat = 2
+        let dividerHeight: CGFloat = 1
+        let dividerSpacing: CGFloat = 6
+
+        func textSize(for textField: NSTextField, maxWidth: CGFloat) -> CGSize {
+            let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font]
+            let attributed = NSAttributedString(string: textField.stringValue, attributes: attributes)
+            let boundingRect = attributed.boundingRect(
+                with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attributes
+            )
+            return CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height) + 4)
+        }
+
+        let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
+        let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
+        let translationTitleSize = (translationTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
+
+        let textMaxWidth = maxWidth - padding.width * 2
+        let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
+        let translationTextSize = textSize(for: translationTextField, maxWidth: textMaxWidth)
+
+        let contentTextWidth = max(
+            originalTitleSize.width,
+            translationTitleSize.width,
+            originalTextSize.width,
+            translationTextSize.width
         )
-        let textSize = CGSize(width: ceil(boundingRect.width) + 2, height: ceil(boundingRect.height))
-        let contentSize = CGSize(
-            width: max(textSize.width + padding.width * 2 + extraSize.width, 60),
-            height: max(textSize.height + padding.height * 2 + extraSize.height, 28)
+        let contentWidth = min(maxWidth, max(contentTextWidth + padding.width * 2, 120))
+
+        let originalTitleHeight = ceil(originalTitleSize.height)
+        let translationTitleHeight = ceil(translationTitleSize.height)
+        let originalTextHeight = max(ceil(originalTextSize.height), 16)
+        let translationTextHeight = max(ceil(translationTextSize.height), 16)
+        let contentHeight = padding.height * 2 + 4
+            + originalTitleHeight
+            + titleTextSpacing
+            + originalTextHeight
+            + dividerSpacing
+            + dividerHeight
+            + dividerSpacing
+            + translationTitleHeight
+            + titleTextSpacing
+            + translationTextHeight
+
+        let titleX = padding.width
+        let textX = padding.width
+        let availableWidth = contentWidth - padding.width * 2
+        originalTextField.preferredMaxLayoutWidth = availableWidth
+        translationTextField.preferredMaxLayoutWidth = availableWidth
+
+        var y = contentHeight - padding.height - originalTitleHeight
+
+        originalTitleField.frame = NSRect(
+            x: titleX,
+            y: y,
+            width: availableWidth,
+            height: originalTitleHeight
         )
-        window.setContentSize(contentSize)
-        textField.frame = NSRect(
+        y -= titleTextSpacing + originalTextHeight
+
+        originalTextField.frame = NSRect(
+            x: textX,
+            y: y,
+            width: availableWidth,
+            height: originalTextHeight
+        )
+        y -= dividerSpacing + dividerHeight
+
+        dividerView.frame = NSRect(
             x: padding.width,
-            y: padding.height,
-            width: contentSize.width - padding.width * 2,
-            height: contentSize.height - padding.height * 2
+            y: y,
+            width: availableWidth,
+            height: dividerHeight
         )
-        window.contentView?.frame = NSRect(origin: .zero, size: contentSize)
+        y -= dividerSpacing + translationTitleHeight
+
+        translationTitleField.frame = NSRect(
+            x: titleX,
+            y: y,
+            width: availableWidth,
+            height: translationTitleHeight
+        )
+        y -= titleTextSpacing + translationTextHeight
+
+        translationTextField.frame = NSRect(
+            x: textX,
+            y: y,
+            width: availableWidth,
+            height: translationTextHeight
+        )
+
+        let contentSize = CGSize(width: contentWidth, height: contentHeight)
+        window.setContentSize(contentSize)
+        contentView.frame = NSRect(origin: .zero, size: contentSize)
     }
 
     private func ensureMonitors() {}
