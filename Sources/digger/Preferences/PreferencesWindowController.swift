@@ -40,19 +40,12 @@ final class PreferencesWindowController: NSObject {
     private let customFunctionsTableView: NSTableView
     private let customFunctionsTableScrollView: NSScrollView
     private let tabView: NSTabView
-    private let sidebarStackView: NSStackView
-    private let sidebarBackgroundView: NSVisualEffectView
-    private let contentBackgroundView: NSVisualEffectView
-    private let sidebarDivider: NSBox
-    private var tabButtons: [PreferencesTab: NSButton]
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
     private let onCustomFunctionsChange: () -> Void
     nonisolated(unsafe) private var mouseDownMonitor: Any?
-
-    private static let sidebarWidth: CGFloat = 184
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
@@ -235,29 +228,7 @@ final class PreferencesWindowController: NSObject {
         customFunctionsTableView.backgroundColor = .clear
 
         tabView = NSTabView()
-        tabView.tabViewType = .noTabsNoBorder
         tabView.translatesAutoresizingMaskIntoConstraints = false
-
-        sidebarStackView = NSStackView()
-        sidebarStackView.orientation = .vertical
-        sidebarStackView.alignment = .leading
-        sidebarStackView.spacing = 4
-        sidebarStackView.edgeInsets = NSEdgeInsets(top: 20, left: 14, bottom: 20, right: 14)
-        sidebarStackView.translatesAutoresizingMaskIntoConstraints = false
-        sidebarBackgroundView = NSVisualEffectView()
-        sidebarBackgroundView.material = .sidebar
-        sidebarBackgroundView.blendingMode = .behindWindow
-        sidebarBackgroundView.state = .active
-        sidebarBackgroundView.translatesAutoresizingMaskIntoConstraints = false
-        contentBackgroundView = NSVisualEffectView()
-        contentBackgroundView.material = .contentBackground
-        contentBackgroundView.blendingMode = .behindWindow
-        contentBackgroundView.state = .active
-        contentBackgroundView.translatesAutoresizingMaskIntoConstraints = false
-        sidebarDivider = NSBox()
-        sidebarDivider.boxType = .separator
-        sidebarDivider.translatesAutoresizingMaskIntoConstraints = false
-        tabButtons = [:]
 
         let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton, removeFunctionButton])
         customFunctionsHeader.orientation = .horizontal
@@ -416,16 +387,12 @@ final class PreferencesWindowController: NSObject {
     private func applyStrings() {
         titleField.stringValue = UIStrings.Preferences.title
         descriptionField.stringValue = UIStrings.Preferences.description
-        tabButtons[.general]?.title = UIStrings.Preferences.tabGeneral
-        tabButtons[.popup]?.title = UIStrings.Preferences.tabPopup
-        tabButtons[.functions]?.title = UIStrings.Preferences.tabFunctions
-        tabButtons[.advanced]?.title = UIStrings.Preferences.tabAdvanced
-        tabButtons[.api]?.title = UIStrings.Preferences.tabAPI
         for item in tabView.tabViewItems {
             guard let tab = item.identifier as? PreferencesTab else {
                 continue
             }
             item.label = tabTitle(for: tab)
+            item.image = tabIcon(for: tab)
         }
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
         popupTooltipDelayLabelField.stringValue = UIStrings.Preferences.popupTooltipDelayLabel
@@ -469,10 +436,6 @@ final class PreferencesWindowController: NSObject {
             let item = tabView.tabViewItem(at: tab.rawValue)
             tabView.selectTabViewItem(item)
         }
-        for (key, button) in tabButtons {
-            button.state = key == tab ? .on : .off
-            updateTabButtonAppearance(button, selected: key == tab)
-        }
     }
 
     private func configureTabs(
@@ -483,44 +446,15 @@ final class PreferencesWindowController: NSObject {
         advancedStackView: NSStackView,
         apiStackView: NSStackView
     ) {
-        for tab in PreferencesTab.allCases {
-            let button = makeTabButton(for: tab)
-            tabButtons[tab] = button
-            sidebarStackView.addArrangedSubview(button)
-            button.leadingAnchor.constraint(equalTo: sidebarStackView.leadingAnchor).isActive = true
-            button.trailingAnchor.constraint(equalTo: sidebarStackView.trailingAnchor).isActive = true
-        }
-
         tabView.addTabViewItem(makeTabViewItem(for: .general, contentView: makeTabContentView(generalStackView)))
         tabView.addTabViewItem(makeTabViewItem(for: .popup, contentView: makeTabContentView(popupStackView)))
         tabView.addTabViewItem(makeTabViewItem(for: .functions, contentView: makeTabContentView(functionsStackView)))
         tabView.addTabViewItem(makeTabViewItem(for: .advanced, contentView: makeTabContentView(advancedStackView)))
         tabView.addTabViewItem(makeTabViewItem(for: .api, contentView: makeTabContentView(apiStackView)))
-
-        contentView.addSubview(contentBackgroundView)
-        contentView.addSubview(sidebarBackgroundView)
-        contentView.addSubview(sidebarDivider)
-        contentView.addSubview(sidebarStackView)
         contentView.addSubview(tabView)
 
         NSLayoutConstraint.activate([
-            sidebarBackgroundView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            sidebarBackgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            sidebarBackgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            sidebarBackgroundView.widthAnchor.constraint(equalToConstant: Self.sidebarWidth),
-            sidebarDivider.leadingAnchor.constraint(equalTo: sidebarBackgroundView.trailingAnchor),
-            sidebarDivider.topAnchor.constraint(equalTo: contentView.topAnchor),
-            sidebarDivider.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            sidebarDivider.widthAnchor.constraint(equalToConstant: 1),
-            contentBackgroundView.leadingAnchor.constraint(equalTo: sidebarDivider.trailingAnchor),
-            contentBackgroundView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            contentBackgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            contentBackgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            sidebarStackView.leadingAnchor.constraint(equalTo: sidebarBackgroundView.leadingAnchor),
-            sidebarStackView.trailingAnchor.constraint(equalTo: sidebarBackgroundView.trailingAnchor),
-            sidebarStackView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            sidebarStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            tabView.leadingAnchor.constraint(equalTo: sidebarDivider.trailingAnchor, constant: 12),
+            tabView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             tabView.topAnchor.constraint(equalTo: contentView.topAnchor),
             tabView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
@@ -530,35 +464,9 @@ final class PreferencesWindowController: NSObject {
     private func makeTabViewItem(for tab: PreferencesTab, contentView: NSView) -> NSTabViewItem {
         let item = NSTabViewItem(identifier: tab)
         item.label = tabTitle(for: tab)
+        item.image = tabIcon(for: tab)
         item.view = contentView
         return item
-    }
-
-    private func makeTabButton(for tab: PreferencesTab) -> NSButton {
-        let button = SidebarButton(title: tabTitle(for: tab), target: self, action: #selector(handleTabButton(_:)))
-        button.setButtonType(.toggle)
-        button.bezelStyle = .regularSquare
-        button.controlSize = .small
-        button.alignment = .left
-        button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        button.isBordered = false
-        button.focusRingType = .none
-        button.wantsLayer = true
-        button.layer?.cornerRadius = 9
-        button.layer?.borderWidth = 1
-        button.image = tabIcon(for: tab)
-        button.imagePosition = .imageLeading
-        button.imageHugsTitle = true
-        button.imageScaling = .scaleProportionallyDown
-        button.contentTintColor = .secondaryLabelColor
-        button.tag = tab.rawValue
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.heightAnchor.constraint(equalToConstant: 30).isActive = true
-        button.onHoverChange = { [weak self] updated in
-            self?.updateTabButtonAppearance(updated, selected: updated.state == .on)
-        }
-        updateTabButtonAppearance(button, selected: false)
-        return button
     }
 
     private static func makeContentStackView() -> NSStackView {
@@ -599,21 +507,6 @@ final class PreferencesWindowController: NSObject {
         return container
     }
 
-    private func updateTabButtonAppearance(_ button: NSButton, selected: Bool) {
-        let accent = NSColor.controlAccentColor
-        let isHovering = (button as? SidebarButton)?.isHovering ?? false
-        if selected {
-            button.contentTintColor = .labelColor
-            button.layer?.backgroundColor = accent.withAlphaComponent(0.22).cgColor
-            button.layer?.borderColor = accent.withAlphaComponent(0.5).cgColor
-        } else {
-            button.contentTintColor = isHovering ? .labelColor : .secondaryLabelColor
-            button.layer?.backgroundColor = isHovering
-                ? NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
-                : NSColor.windowBackgroundColor.withAlphaComponent(0.7).cgColor
-            button.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
-        }
-    }
 
     private func tabIcon(for tab: PreferencesTab) -> NSImage? {
         let name: String
@@ -629,7 +522,7 @@ final class PreferencesWindowController: NSObject {
         case .api:
             name = "key"
         }
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
     }
 
@@ -710,12 +603,6 @@ final class PreferencesWindowController: NSObject {
         }
     }
 
-    @objc private func handleTabButton(_ sender: NSButton) {
-        guard let tab = PreferencesTab(rawValue: sender.tag) else {
-            return
-        }
-        selectTab(tab)
-    }
 
     @objc private func handleAddFunction(_ sender: Any?) {
         print("[Preferences] Add Function clicked")
@@ -895,38 +782,6 @@ final class PreferencesWindowController: NSObject {
     }
 }
 
-final class SidebarButton: NSButton {
-    var isHovering = false
-    var onHoverChange: ((SidebarButton) -> Void)?
-    private var trackingArea: NSTrackingArea?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        trackingArea = area
-        addTrackingArea(area)
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        isHovering = true
-        onHoverChange?(self)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        isHovering = false
-        onHoverChange?(self)
-    }
-}
 
 extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
