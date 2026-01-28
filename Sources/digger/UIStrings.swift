@@ -55,9 +55,11 @@ enum UIStrings {
         case popupOriginalTitle
         case popupTranslationTitle
         case popupCopyTranslation
+        case popupCopyResult
         case popupCopyAll
         case popupOpenPreferences
         case popupCopyTranslationSuccess
+        case popupCopyResultSuccess
         case popupCopyAllSuccess
         case popupProcessingPrefix
         case popupEmptyResult
@@ -105,9 +107,11 @@ enum UIStrings {
         static var originalTitle: String { value(.popupOriginalTitle) }
         static var translationTitle: String { value(.popupTranslationTitle) }
         static var copyTranslation: String { value(.popupCopyTranslation) }
+        static var copyResult: String { value(.popupCopyResult) }
         static var copyAll: String { value(.popupCopyAll) }
         static var openPreferences: String { value(.popupOpenPreferences) }
         static var copyTranslationSuccess: String { value(.popupCopyTranslationSuccess) }
+        static var copyResultSuccess: String { value(.popupCopyResultSuccess) }
         static var copyAllSuccess: String { value(.popupCopyAllSuccess) }
         static var processingPrefix: String { value(.popupProcessingPrefix) }
         static var emptyResult: String { value(.popupEmptyResult) }
@@ -167,9 +171,11 @@ enum UIStrings {
             .popupOriginalTitle: "Original",
             .popupTranslationTitle: "Translation",
             .popupCopyTranslation: "Copy Translation",
+            .popupCopyResult: "Copy Result",
             .popupCopyAll: "Copy All Results",
             .popupOpenPreferences: "Open Preferences",
             .popupCopyTranslationSuccess: "Translation copied",
+            .popupCopyResultSuccess: "Result copied",
             .popupCopyAllSuccess: "All results copied",
             .popupProcessingPrefix: "Processing",
             .popupEmptyResult: "Result is empty",
@@ -213,9 +219,11 @@ enum UIStrings {
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "译文",
             .popupCopyTranslation: "复制译文",
+            .popupCopyResult: "复制结果",
             .popupCopyAll: "复制所有结果",
             .popupOpenPreferences: "打开偏好设置",
             .popupCopyTranslationSuccess: "译文已复制",
+            .popupCopyResultSuccess: "结果已复制",
             .popupCopyAllSuccess: "结果已复制",
             .popupProcessingPrefix: "处理中",
             .popupEmptyResult: "结果为空",
@@ -259,9 +267,11 @@ enum UIStrings {
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "翻訳",
             .popupCopyTranslation: "翻訳をコピー",
+            .popupCopyResult: "結果をコピー",
             .popupCopyAll: "すべての結果をコピー",
             .popupOpenPreferences: "環境設定を開く",
             .popupCopyTranslationSuccess: "翻訳をコピーしました",
+            .popupCopyResultSuccess: "結果をコピーしました",
             .popupCopyAllSuccess: "結果をコピーしました",
             .popupProcessingPrefix: "処理中",
             .popupEmptyResult: "結果が空です",

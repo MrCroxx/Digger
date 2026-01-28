@@ -23,7 +23,27 @@ final class DraggableScrollView: NSScrollView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let contentView = documentView {
+            let contentPoint = contentView.convert(point, from: self)
+            let hitView = contentView.hitTest(contentPoint)
+            if findSelectableTextField(from: hitView) != nil {
+                super.mouseDown(with: event)
+                return
+            }
+        }
         window?.performDrag(with: event)
+    }
+
+    private func findSelectableTextField(from view: NSView?) -> NSTextField? {
+        var current = view
+        while let currentView = current {
+            if let textField = currentView as? NSTextField, textField.isSelectable {
+                return textField
+            }
+            current = currentView.superview
+        }
+        return nil
     }
 }
 
@@ -137,9 +157,10 @@ final class ForceClickSelectionPopup {
     private let originalTextField: NSTextField
     private let contentView: DraggableContentView
     private let headerView: NSView
+    private let headerDividerView: NSView
     private let scrollView: DraggableScrollView
     private let documentView: NSView
-    private let copyTranslationButton: HoverableIconButton
+    private let originalCopyButton: HoverableIconButton
     private let copyAllButton: HoverableIconButton
     private let preferencesButton: HoverableIconButton
     private let actionButtons: [HoverableIconButton]
@@ -167,6 +188,7 @@ final class ForceClickSelectionPopup {
         let function: PopupFunction
         let titleField: NSTextField
         let textField: NSTextField
+        let copyButton: HoverableIconButton
         let dividerView: NSView
         var isLoading: Bool
     }
@@ -185,18 +207,19 @@ final class ForceClickSelectionPopup {
         originalTextField.textColor = .labelColor
         originalTextField.backgroundColor = .clear
         originalTextField.isEditable = false
-        originalTextField.isSelectable = false
+        originalTextField.isSelectable = true
         originalTextField.lineBreakMode = .byWordWrapping
         originalTextField.maximumNumberOfLines = 0
         originalTextField.cell?.wraps = true
         originalTextField.cell?.usesSingleLineMode = false
 
-        copyTranslationButton = ForceClickSelectionPopup.makeIconButton(
-            symbolName: "doc.text",
-            toolTip: UIStrings.Popup.copyTranslation,
+        originalCopyButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "doc.on.doc",
+            toolTip: UIStrings.Popup.copyResult,
             target: nil,
-            action: #selector(handleCopyTranslation)
+            action: #selector(handleCopyOriginal)
         )
+
         copyAllButton = ForceClickSelectionPopup.makeIconButton(
             symbolName: "doc.on.doc",
             toolTip: UIStrings.Popup.copyAll,
@@ -209,7 +232,7 @@ final class ForceClickSelectionPopup {
             target: nil,
             action: #selector(handleOpenPreferences)
         )
-        actionButtons = [copyTranslationButton, copyAllButton, preferencesButton]
+        actionButtons = [copyAllButton, preferencesButton]
         tooltipWindow = HoverTooltipWindow()
 
         contentView = DraggableContentView()
@@ -217,9 +240,13 @@ final class ForceClickSelectionPopup {
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
         headerView = NSView()
+        headerDividerView = NSView()
+        headerDividerView.wantsLayer = true
+        headerDividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
         documentView = NSView()
         documentView.addSubview(originalTitleField)
         documentView.addSubview(originalTextField)
+        documentView.addSubview(originalCopyButton)
 
         scrollView = DraggableScrollView()
         scrollView.drawsBackground = false
@@ -229,11 +256,11 @@ final class ForceClickSelectionPopup {
         scrollView.scrollerStyle = .overlay
         scrollView.borderType = .noBorder
         scrollView.documentView = documentView
-        headerView.addSubview(copyTranslationButton)
         headerView.addSubview(copyAllButton)
         headerView.addSubview(preferencesButton)
         contentView.addSubview(scrollView)
         contentView.addSubview(headerView)
+        contentView.addSubview(headerDividerView)
 
         window = PopupWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -261,6 +288,13 @@ final class ForceClickSelectionPopup {
                 }
                 self.handleHover(isHovering, for: button)
             }
+        }
+        originalCopyButton.target = self
+        originalCopyButton.onHover = { [weak self] isHovering in
+            guard let self else {
+                return
+            }
+            self.handleHover(isHovering, for: self.originalCopyButton)
         }
 
         applyPopupTextSize(PopupFontPreferences.load())
@@ -324,7 +358,10 @@ final class ForceClickSelectionPopup {
         if let translationIndex = functionSections.firstIndex(where: { $0.function.isTranslation }) {
             functionSections[translationIndex].titleField.stringValue = UIStrings.Popup.translationTitle
         }
-        copyTranslationButton.tooltipText = UIStrings.Popup.copyTranslation
+        originalCopyButton.tooltipText = UIStrings.Popup.copyResult
+        for index in functionSections.indices {
+            functionSections[index].copyButton.tooltipText = UIStrings.Popup.copyResult
+        }
         copyAllButton.tooltipText = UIStrings.Popup.copyAll
         preferencesButton.tooltipText = UIStrings.Popup.openPreferences
         updateLoadingText()
@@ -347,6 +384,7 @@ final class ForceClickSelectionPopup {
             for section in functionSections {
                 section.titleField.removeFromSuperview()
                 section.textField.removeFromSuperview()
+                section.copyButton.removeFromSuperview()
                 section.dividerView.removeFromSuperview()
             }
             functionSections.removeAll()
@@ -364,11 +402,24 @@ final class ForceClickSelectionPopup {
                 textField.textColor = .labelColor
                 textField.backgroundColor = .clear
                 textField.isEditable = false
-                textField.isSelectable = false
+                textField.isSelectable = true
                 textField.lineBreakMode = .byWordWrapping
                 textField.maximumNumberOfLines = 0
                 textField.cell?.wraps = true
                 textField.cell?.usesSingleLineMode = false
+
+                let copyButton = ForceClickSelectionPopup.makeIconButton(
+                    symbolName: "doc.on.doc",
+                    toolTip: UIStrings.Popup.copyResult,
+                    target: self,
+                    action: #selector(handleCopySection(_:))
+                )
+                copyButton.onHover = { [weak self, weak copyButton] isHovering in
+                    guard let self, let copyButton else {
+                        return
+                    }
+                    self.handleHover(isHovering, for: copyButton)
+                }
 
                 let dividerView = NSView()
                 dividerView.wantsLayer = true
@@ -377,11 +428,13 @@ final class ForceClickSelectionPopup {
                 documentView.addSubview(dividerView)
                 documentView.addSubview(titleField)
                 documentView.addSubview(textField)
+                documentView.addSubview(copyButton)
 
                 functionSections.append(FunctionSection(
                     function: function,
                     titleField: titleField,
                     textField: textField,
+                    copyButton: copyButton,
                     dividerView: dividerView,
                     isLoading: true
                 ))
@@ -394,6 +447,7 @@ final class ForceClickSelectionPopup {
                     function: functions[index],
                     titleField: current.titleField,
                     textField: current.textField,
+                    copyButton: current.copyButton,
                     dividerView: current.dividerView,
                     isLoading: current.isLoading
                 )
@@ -433,6 +487,8 @@ final class ForceClickSelectionPopup {
         let dividerHeight: CGFloat = 1
         let dividerSpacing: CGFloat = 6
         let scrollerClearance: CGFloat = 12
+        let sectionButtonSize: CGFloat = 16
+        let sectionButtonSpacing: CGFloat = 4
         let paddingLeft = padding.width
 
         func textSize(for textField: NSTextField, maxWidth: CGFloat) -> CGSize {
@@ -467,9 +523,11 @@ final class ForceClickSelectionPopup {
                 sectionTextSizes.append(textSizeValue)
             }
 
-            var contentTextWidth = max(originalTitleSize.width, originalTextSize.width)
+            let originalTitleWidth = originalTitleSize.width + sectionButtonSize + sectionButtonSpacing
+            var contentTextWidth = max(originalTitleWidth, originalTextSize.width)
             for index in sectionTitleSizes.indices {
-                let sectionWidth = max(sectionTitleSizes[index].width, sectionTextSizes[index].width)
+                let sectionTitleWidth = sectionTitleSizes[index].width + sectionButtonSize + sectionButtonSpacing
+                let sectionWidth = max(sectionTitleWidth, sectionTextSizes[index].width)
                 contentTextWidth = max(contentTextWidth, sectionWidth)
             }
             let contentWidth = max(minWidth, min(maxWidth, contentTextWidth + paddingLeft + paddingRight))
@@ -580,8 +638,16 @@ final class ForceClickSelectionPopup {
         originalTitleField.frame = NSRect(
             x: titleX,
             y: y,
-            width: availableWidth,
+            width: max(0, availableWidth - sectionButtonSize - sectionButtonSpacing),
             height: ceil(originalTitleSize.height)
+        )
+        let originalButtonX = paddingLeft + availableWidth - sectionButtonSize
+        let originalButtonY = y + max(0, (ceil(originalTitleSize.height) - sectionButtonSize) * 0.5)
+        originalCopyButton.frame = NSRect(
+            x: originalButtonX,
+            y: originalButtonY,
+            width: sectionButtonSize,
+            height: sectionButtonSize
         )
         y -= titleTextSpacing + max(ceil(originalTextSize.height), 16)
 
@@ -607,8 +673,16 @@ final class ForceClickSelectionPopup {
             section.titleField.frame = NSRect(
                 x: titleX,
                 y: y,
-                width: availableWidth,
+                width: max(0, availableWidth - sectionButtonSize - sectionButtonSpacing),
                 height: ceil(titleSize.height)
+            )
+            let buttonX = paddingLeft + availableWidth - sectionButtonSize
+            let buttonY = y + max(0, (ceil(titleSize.height) - sectionButtonSize) * 0.5)
+            section.copyButton.frame = NSRect(
+                x: buttonX,
+                y: buttonY,
+                width: sectionButtonSize,
+                height: sectionButtonSize
             )
             y -= titleTextSpacing + max(ceil(textSizeValue.height), 16)
             section.textField.frame = NSRect(
@@ -624,6 +698,12 @@ final class ForceClickSelectionPopup {
         contentView.frame = NSRect(origin: .zero, size: CGSize(width: contentWidth, height: visibleHeight + headerHeight))
         scrollView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: visibleHeight)
         headerView.frame = NSRect(x: 0, y: visibleHeight, width: contentWidth, height: headerHeight)
+        headerDividerView.frame = NSRect(
+            x: paddingLeft,
+            y: visibleHeight,
+            width: availableWidth,
+            height: 1
+        )
         scrollView.hasVerticalScroller = needsVerticalScroll
         let buttonSize: CGFloat = 18
         let buttonSpacing: CGFloat = 6
@@ -737,18 +817,22 @@ final class ForceClickSelectionPopup {
     }
 
     private func updateActionButtons() {
-        let hasTranslation = functionSections.first(where: { $0.function.isTranslation })
-            .map { !$0.isLoading && !$0.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            ?? false
         let hasAnyResult = functionSections.contains {
             !$0.isLoading && !$0.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        copyTranslationButton.isEnabled = hasTranslation
         copyAllButton.isEnabled = hasAnyResult
         let enabledAlpha: CGFloat = 1
         let disabledAlpha: CGFloat = 0.4
-        copyTranslationButton.alphaValue = hasTranslation ? enabledAlpha : disabledAlpha
         copyAllButton.alphaValue = hasAnyResult ? enabledAlpha : disabledAlpha
+        let originalHasText = !originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        originalCopyButton.isEnabled = originalHasText
+        originalCopyButton.alphaValue = originalHasText ? enabledAlpha : disabledAlpha
+        for section in functionSections {
+            let hasResult = !section.isLoading
+                && !section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            section.copyButton.isEnabled = hasResult
+            section.copyButton.alphaValue = hasResult ? enabledAlpha : disabledAlpha
+        }
     }
 
     private func handleHover(_ isHovering: Bool, for button: HoverableIconButton) {
@@ -809,18 +893,6 @@ final class ForceClickSelectionPopup {
         }
     }
 
-    @objc private func handleCopyTranslation() {
-        hideTooltip()
-        guard let translationSection = functionSections.first(where: { $0.function.isTranslation }),
-              !translationSection.isLoading else {
-            return
-        }
-        let text = translationSection.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if copyToPasteboard(text) {
-            showCopyFeedback(text: UIStrings.Popup.copyTranslationSuccess, for: copyTranslationButton)
-        }
-    }
-
     @objc private func handleCopyAll() {
         hideTooltip()
         let original = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -840,6 +912,26 @@ final class ForceClickSelectionPopup {
         let combined = sections.joined(separator: "\n\n")
         if copyToPasteboard(combined) {
             showCopyFeedback(text: UIStrings.Popup.copyAllSuccess, for: copyAllButton)
+        }
+    }
+
+    @objc private func handleCopyOriginal() {
+        hideTooltip()
+        let text = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if copyToPasteboard(text) {
+            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: originalCopyButton)
+        }
+    }
+
+    @objc private func handleCopySection(_ sender: HoverableIconButton) {
+        hideTooltip()
+        guard let section = functionSections.first(where: { $0.copyButton === sender }),
+              !section.isLoading else {
+            return
+        }
+        let text = section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if copyToPasteboard(text) {
+            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: sender)
         }
     }
 
