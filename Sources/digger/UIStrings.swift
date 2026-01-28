@@ -57,6 +57,8 @@ enum UIStrings {
         case popupCopyTranslation
         case popupCopyAll
         case popupOpenPreferences
+        case popupCopyTranslationSuccess
+        case popupCopyAllSuccess
         case popupProcessingPrefix
         case popupEmptyResult
         case popupEmptyPrompt
@@ -103,6 +105,8 @@ enum UIStrings {
         static var copyTranslation: String { value(.popupCopyTranslation) }
         static var copyAll: String { value(.popupCopyAll) }
         static var openPreferences: String { value(.popupOpenPreferences) }
+        static var copyTranslationSuccess: String { value(.popupCopyTranslationSuccess) }
+        static var copyAllSuccess: String { value(.popupCopyAllSuccess) }
         static var processingPrefix: String { value(.popupProcessingPrefix) }
         static var emptyResult: String { value(.popupEmptyResult) }
         static var emptyPrompt: String { value(.popupEmptyPrompt) }
@@ -161,6 +165,8 @@ enum UIStrings {
             .popupCopyTranslation: "Copy Translation",
             .popupCopyAll: "Copy All Results",
             .popupOpenPreferences: "Open Preferences",
+            .popupCopyTranslationSuccess: "Translation copied",
+            .popupCopyAllSuccess: "All results copied",
             .popupProcessingPrefix: "Processing",
             .popupEmptyResult: "Result is empty",
             .popupEmptyPrompt: "Prompt is empty",
@@ -203,6 +209,8 @@ enum UIStrings {
             .popupCopyTranslation: "复制译文",
             .popupCopyAll: "复制所有结果",
             .popupOpenPreferences: "打开偏好设置",
+            .popupCopyTranslationSuccess: "译文已复制",
+            .popupCopyAllSuccess: "结果已复制",
             .popupProcessingPrefix: "处理中",
             .popupEmptyResult: "结果为空",
             .popupEmptyPrompt: "提示语为空",
@@ -245,6 +253,8 @@ enum UIStrings {
             .popupCopyTranslation: "翻訳をコピー",
             .popupCopyAll: "すべての結果をコピー",
             .popupOpenPreferences: "環境設定を開く",
+            .popupCopyTranslationSuccess: "翻訳をコピーしました",
+            .popupCopyAllSuccess: "結果をコピーしました",
             .popupProcessingPrefix: "処理中",
             .popupEmptyResult: "結果が空です",
             .popupEmptyPrompt: "プロンプトが空です",
