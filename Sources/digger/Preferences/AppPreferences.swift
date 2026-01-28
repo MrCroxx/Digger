@@ -9,6 +9,7 @@ enum AppPreferences {
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
+    static let translationStreamingKey = "TranslationStreaming"
     static let languageKey = "AppLanguage"
     static let translationTargetLanguageKey = "TranslationTargetLanguage"
 
@@ -17,6 +18,7 @@ enum AppPreferences {
     static let defaultBaselineWindowMs: CGFloat = 120
     static let defaultPopupMaxWidth: CGFloat = 520
     static let defaultPopupMaxHeight: CGFloat = 360
+    static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
 
@@ -79,6 +81,17 @@ enum AppPreferences {
 
     static func setPopupMaxHeight(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 120)), forKey: popupMaxHeightKey)
+    }
+
+    static func translationStreamingEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: translationStreamingKey) == nil {
+            return defaultTranslationStreaming
+        }
+        return UserDefaults.standard.bool(forKey: translationStreamingKey)
+    }
+
+    static func setTranslationStreamingEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: translationStreamingKey)
     }
 
     static func language() -> AppLanguage {
