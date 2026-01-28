@@ -13,7 +13,9 @@ final class PreferencesWindowController: NSObject {
     private let windowField: NSTextField
     private let popupMaxWidthField: NSTextField
     private let popupMaxHeightField: NSTextField
+    private let popupTooltipDelayField: NSTextField
     private let popupFontSizeLabelField: NSTextField
+    private let popupTooltipDelayLabelField: NSTextField
     private let languageLabelField: NSTextField
     private let targetLanguageLabelField: NSTextField
     private let languagePopUp: NSPopUpButton
@@ -80,9 +82,16 @@ final class PreferencesWindowController: NSObject {
         popupMaxHeightField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         popupMaxHeightField.isEditable = true
         popupMaxHeightField.isSelectable = true
+        popupTooltipDelayField = NSTextField()
+        popupTooltipDelayField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupTooltipDelayField.isEditable = true
+        popupTooltipDelayField.isSelectable = true
         popupFontSizeLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupFontSizeLabel)
         popupFontSizeLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         popupFontSizeLabelField.textColor = .secondaryLabelColor
+        popupTooltipDelayLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupTooltipDelayLabel)
+        popupTooltipDelayLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupTooltipDelayLabelField.textColor = .secondaryLabelColor
         languageLabelField = NSTextField(labelWithString: UIStrings.Preferences.languageLabel)
         languageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         languageLabelField.textColor = .secondaryLabelColor
@@ -134,6 +143,7 @@ final class PreferencesWindowController: NSObject {
             slider: popupFontSizeSlider,
             valueField: popupFontSizeValueField
         ))
+        stackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
         stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
         stackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
         stackView.addArrangedSubview(streamingToggle)
@@ -182,6 +192,8 @@ final class PreferencesWindowController: NSObject {
         popupMaxWidthField.action = #selector(handlePopupMaxWidthChange(_:))
         popupMaxHeightField.target = self
         popupMaxHeightField.action = #selector(handlePopupMaxHeightChange(_:))
+        popupTooltipDelayField.target = self
+        popupTooltipDelayField.action = #selector(handlePopupTooltipDelayChange(_:))
         languagePopUp.target = self
         languagePopUp.action = #selector(handleLanguageChange(_:))
         targetLanguagePopUp.target = self
@@ -196,6 +208,7 @@ final class PreferencesWindowController: NSObject {
         windowField.delegate = self
         popupMaxWidthField.delegate = self
         popupMaxHeightField.delegate = self
+        popupTooltipDelayField.delegate = self
         refreshValues()
     }
 
@@ -214,6 +227,7 @@ final class PreferencesWindowController: NSObject {
         windowField.stringValue = String(format: "%.0f", AppPreferences.baselineWindowMs())
         popupMaxWidthField.stringValue = String(format: "%.0f", AppPreferences.popupMaxWidth())
         popupMaxHeightField.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
+        popupTooltipDelayField.stringValue = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
         streamingToggle.state = AppPreferences.translationStreamingEnabled() ? .on : .off
         if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
             languagePopUp.selectItem(at: index)
@@ -232,6 +246,7 @@ final class PreferencesWindowController: NSObject {
         titleField.stringValue = UIStrings.Preferences.title
         descriptionField.stringValue = UIStrings.Preferences.description
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
+        popupTooltipDelayLabelField.stringValue = UIStrings.Preferences.popupTooltipDelayLabel
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
         targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
         streamingToggle.title = UIStrings.Preferences.streamingLabel
@@ -362,6 +377,13 @@ final class PreferencesWindowController: NSObject {
         onPopupLayoutChange()
     }
 
+    @objc private func handlePopupTooltipDelayChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setPopupTooltipDelayMs(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
+    }
+
     @objc private func handleLanguageChange(_ sender: NSPopUpButton) {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let language = AppLanguage(rawValue: rawValue) else {
@@ -408,6 +430,8 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             handlePopupMaxWidthChange(field)
         case popupMaxHeightField:
             handlePopupMaxHeightChange(field)
+        case popupTooltipDelayField:
+            handlePopupTooltipDelayChange(field)
         case thresholdField:
             handleThresholdChange(field)
         case deltaField:
@@ -432,6 +456,8 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             handlePopupMaxWidthChange(field)
         case popupMaxHeightField:
             handlePopupMaxHeightChange(field)
+        case popupTooltipDelayField:
+            handlePopupTooltipDelayChange(field)
         case thresholdField:
             handleThresholdChange(field)
         case deltaField:
