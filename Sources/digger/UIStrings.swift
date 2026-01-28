@@ -17,6 +17,34 @@ enum AppLanguage: String, CaseIterable {
     }
 }
 
+enum TranslationTargetLanguage: String, CaseIterable {
+    case english = "en"
+    case chineseSimplified = "zh-Hans"
+    case japanese = "ja"
+
+    var displayName: String {
+        switch self {
+        case .english:
+            return "English"
+        case .chineseSimplified:
+            return "简体中文"
+        case .japanese:
+            return "日本語"
+        }
+    }
+
+    var promptName: String {
+        switch self {
+        case .english:
+            return "English"
+        case .chineseSimplified:
+            return "Simplified Chinese"
+        case .japanese:
+            return "Japanese"
+        }
+    }
+}
+
 enum UIStrings {
     enum Key: String {
         case translationEmptyResult
@@ -30,6 +58,7 @@ enum UIStrings {
         case preferencesDescription
         case preferencesPopupFontSizeLabel
         case preferencesLanguageLabel
+        case preferencesTargetLanguageLabel
         case menuPreferences
         case menuQuit
         case menuEdit
@@ -60,6 +89,7 @@ enum UIStrings {
         static var description: String { value(.preferencesDescription) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
+        static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
     }
 
     enum Menu {
@@ -96,6 +126,7 @@ enum UIStrings {
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
             .preferencesLanguageLabel: "Language",
+            .preferencesTargetLanguageLabel: "Target Language",
             .menuPreferences: "Preferences…",
             .menuQuit: "Quit Digger",
             .menuEdit: "Edit",
@@ -119,6 +150,7 @@ enum UIStrings {
             .preferencesDescription: "设置会自动保存。",
             .preferencesPopupFontSizeLabel: "弹窗字号",
             .preferencesLanguageLabel: "语言",
+            .preferencesTargetLanguageLabel: "目标语言",
             .menuPreferences: "偏好设置…",
             .menuQuit: "退出 Digger",
             .menuEdit: "编辑",
@@ -142,6 +174,7 @@ enum UIStrings {
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
             .preferencesLanguageLabel: "言語",
+            .preferencesTargetLanguageLabel: "翻訳先",
             .menuPreferences: "環境設定…",
             .menuQuit: "Digger を終了",
             .menuEdit: "編集",

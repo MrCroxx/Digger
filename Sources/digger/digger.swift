@@ -145,9 +145,10 @@ private actor OpenAITranslator {
     }
 
     func translate(_ text: String) async throws -> String {
+        let targetLanguage = AppPreferences.translationTargetLanguage()
         let query = ChatQuery(
             messages: [
-                .system(.init(content: .textContent("Translate the user's text into Simplified Chinese. Preserve meaning, formatting, and proper nouns."))),
+                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
                 .user(.init(content: .string(text)))
             ],
             model: .gpt4_1_mini,
@@ -1225,6 +1226,7 @@ enum AppPreferences {
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
     static let languageKey = "AppLanguage"
+    static let translationTargetLanguageKey = "TranslationTargetLanguage"
 
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 2.0
@@ -1232,6 +1234,7 @@ enum AppPreferences {
     static let defaultPopupMaxWidth: CGFloat = 520
     static let defaultPopupMaxHeight: CGFloat = 360
     static let defaultLanguage: AppLanguage = .english
+    static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
 
     static func apiKey() -> String {
         UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
@@ -1302,6 +1305,15 @@ enum AppPreferences {
     static func setLanguage(_ language: AppLanguage) {
         UserDefaults.standard.set(language.rawValue, forKey: languageKey)
     }
+
+    static func translationTargetLanguage() -> TranslationTargetLanguage {
+        let stored = UserDefaults.standard.string(forKey: translationTargetLanguageKey)
+        return TranslationTargetLanguage(rawValue: stored ?? "") ?? defaultTranslationTargetLanguage
+    }
+
+    static func setTranslationTargetLanguage(_ language: TranslationTargetLanguage) {
+        UserDefaults.standard.set(language.rawValue, forKey: translationTargetLanguageKey)
+    }
 }
 
 @MainActor
@@ -1318,7 +1330,9 @@ private final class PreferencesWindowController: NSObject {
     private let popupMaxHeightField: NSTextField
     private let popupFontSizeLabelField: NSTextField
     private let languageLabelField: NSTextField
+    private let targetLanguageLabelField: NSTextField
     private let languagePopUp: NSPopUpButton
+    private let targetLanguagePopUp: NSPopUpButton
     private let popupFontSizeSlider: NSSlider
     private let popupFontSizeValueField: NSTextField
     private let onPopupFontSizeChange: (CGFloat) -> Void
@@ -1393,6 +1407,16 @@ private final class PreferencesWindowController: NSObject {
             languagePopUp.addItem(withTitle: language.displayName)
             languagePopUp.item(at: index)?.representedObject = language.rawValue
         }
+        targetLanguageLabelField = NSTextField(labelWithString: UIStrings.Preferences.targetLanguageLabel)
+        targetLanguageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        targetLanguageLabelField.textColor = .secondaryLabelColor
+        targetLanguagePopUp = NSPopUpButton()
+        targetLanguagePopUp.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        targetLanguagePopUp.isBordered = true
+        for (index, language) in TranslationTargetLanguage.allCases.enumerated() {
+            targetLanguagePopUp.addItem(withTitle: language.displayName)
+            targetLanguagePopUp.item(at: index)?.representedObject = language.rawValue
+        }
         popupFontSizeSlider = NSSlider(
             value: Double(PopupFontPreferences.load()),
             minValue: Double(PopupFontPreferences.minSize),
@@ -1422,6 +1446,7 @@ private final class PreferencesWindowController: NSObject {
             valueField: popupFontSizeValueField
         ))
         stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
+        stackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
@@ -1440,7 +1465,7 @@ private final class PreferencesWindowController: NSObject {
         ])
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -1469,6 +1494,8 @@ private final class PreferencesWindowController: NSObject {
         popupMaxHeightField.action = #selector(handlePopupMaxHeightChange(_:))
         languagePopUp.target = self
         languagePopUp.action = #selector(handleLanguageChange(_:))
+        targetLanguagePopUp.target = self
+        targetLanguagePopUp.action = #selector(handleTargetLanguageChange(_:))
 
         apiKeyField.delegate = self
         endpointField.delegate = self
@@ -1498,6 +1525,9 @@ private final class PreferencesWindowController: NSObject {
         if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
             languagePopUp.selectItem(at: index)
         }
+        if let index = TranslationTargetLanguage.allCases.firstIndex(of: AppPreferences.translationTargetLanguage()) {
+            targetLanguagePopUp.selectItem(at: index)
+        }
 
         let size = PopupFontPreferences.load()
         popupFontSizeSlider.doubleValue = Double(size)
@@ -1510,6 +1540,7 @@ private final class PreferencesWindowController: NSObject {
         descriptionField.stringValue = UIStrings.Preferences.description
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
+        targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
         window.title = UIStrings.Preferences.title
     }
 
@@ -1645,6 +1676,14 @@ private final class PreferencesWindowController: NSObject {
         AppPreferences.setLanguage(language)
         applyStrings()
         onLanguageChange()
+    }
+
+    @objc private func handleTargetLanguageChange(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let language = TranslationTargetLanguage(rawValue: rawValue) else {
+            return
+        }
+        AppPreferences.setTranslationTargetLanguage(language)
     }
 
     private func notifyForceClickSettingsChange() {
