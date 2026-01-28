@@ -7,9 +7,7 @@ import OpenAI
 import os
 
 private final class ForceClickMonitor {
-    private let pressureThreshold: Float
-    private let pressureDelta: Float
-    private let baselineWindow: TimeInterval
+    private let settingsLock = OSAllocatedUnfairLock<(Float, Float, TimeInterval)>(uncheckedState: (0, 0, 0))
     private let onForceClick: () -> Void
     private let activeLock = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
     private let mouseDownLock = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
@@ -23,10 +21,16 @@ private final class ForceClickMonitor {
         baselineWindow: TimeInterval,
         onForceClick: @escaping () -> Void
     ) {
-        self.pressureThreshold = pressureThreshold
-        self.pressureDelta = pressureDelta
-        self.baselineWindow = baselineWindow
+        settingsLock.withLockUnchecked { settings in
+            settings = (pressureThreshold, pressureDelta, baselineWindow)
+        }
         self.onForceClick = onForceClick
+    }
+
+    func updateSettings(pressureThreshold: Float, pressureDelta: Float, baselineWindow: TimeInterval) {
+        settingsLock.withLockUnchecked { settings in
+            settings = (pressureThreshold, pressureDelta, baselineWindow)
+        }
     }
 
     func setMouseDown(_ isDown: Bool) {
@@ -60,6 +64,7 @@ private final class ForceClickMonitor {
             return
         }
 
+        let (pressureThreshold, pressureDelta, baselineWindow) = settingsLock.withLockUnchecked { $0 }
         let elapsed = ProcessInfo.processInfo.systemUptime - downTime
         var shouldTrigger = false
 
@@ -100,8 +105,9 @@ private final class ForceClickMonitor {
 private actor OpenAITranslator {
     private let client: OpenAI
 
-    init?(environment: [String: String] = ProcessInfo.processInfo.environment) {
-        guard let token = environment["OPENAI_API_KEY"], !token.isEmpty else {
+    init?() {
+        let token = AppPreferences.apiKey()
+        guard !token.isEmpty else {
             return nil
         }
 
@@ -109,8 +115,8 @@ private actor OpenAITranslator {
         var basePath = "/v1"
         var port = 443
         var scheme = "https"
-        if let endpointText = environment["OPENAI_ENDPOINT"],
-           !endpointText.isEmpty,
+        let endpointText = AppPreferences.endpoint()
+        if !endpointText.isEmpty,
            let endpoint = URL(string: endpointText) {
             if let endpointHost = endpoint.host {
                 host = endpointHost
@@ -154,11 +160,16 @@ private actor OpenAITranslator {
 
 private final class ForceClickSelectionHandler {
     private let systemElement = AXUIElementCreateSystemWide()
-    private let translator = OpenAITranslator()
+    private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
+    private let triggerCooldown: TimeInterval = 0.25
 
     func handleForceClick() {
+        guard shouldHandleTrigger() else {
+            return
+        }
         guard let text = fetchOrSelectText(), !text.isEmpty else {
-            if let fallbackText = copySelectionText(selectWordIfNeeded: true), !fallbackText.isEmpty {
+            if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
+               !fallbackText.isEmpty {
                 print(fallbackText)
                 translateAndShow(text: fallbackText)
             }
@@ -166,6 +177,39 @@ private final class ForceClickSelectionHandler {
         }
         print(text)
         translateAndShow(text: text)
+    }
+
+    private func shouldHandleTrigger() -> Bool {
+        let now = ProcessInfo.processInfo.systemUptime
+        return triggerLock.withLockUnchecked { last in
+            if now - last < triggerCooldown {
+                return false
+            }
+            last = now
+            return true
+        }
+    }
+
+    private func shouldSelectWordFallback() -> Bool {
+        guard let focusedElementValue = copyAttribute(
+            element: systemElement,
+            attribute: kAXFocusedUIElementAttribute as CFString
+        ) else {
+            return false
+        }
+        let focusedElement = focusedElementValue as! AXUIElement
+        guard let rangeValueAny = copyAttribute(
+            element: focusedElement,
+            attribute: kAXSelectedTextRangeAttribute as CFString
+        ) else {
+            return false
+        }
+        let rangeValue = rangeValueAny as! AXValue
+        var selectionRange = CFRange()
+        guard AXValueGetValue(rangeValue, .cfRange, &selectionRange) else {
+            return false
+        }
+        return selectionRange.length == 0
     }
 
     private func translateAndShow(text: String) {
@@ -176,14 +220,13 @@ private final class ForceClickSelectionHandler {
         guard let location = currentMouseLocation() else {
             return
         }
-        let translator = self.translator
         let requestID = UUID()
         Task { @MainActor in
             forceClickSelectionPopup.showLoading(original: trimmedText, near: location, requestID: requestID)
         }
         Task { [trimmedText, location, requestID] in
             let translation: String
-            if let translator {
+            if let translator = OpenAITranslator() {
                 do {
                     let result = try await translator.translate(trimmedText)
                     translation = result.isEmpty ? "翻译结果为空" : result
@@ -278,6 +321,25 @@ private final class ForceClickSelectionHandler {
         }
 
         let nsContext = contextText as NSString
+        if selectionRange.length > 0 {
+            var selectedRange = selectionRange
+            if let axRange = AXValueCreate(.cfRange, &selectedRange),
+               let rangeText = copyParameterizedAttribute(
+                   element: focusedElement,
+                   attribute: kAXStringForRangeParameterizedAttribute as CFString,
+                   parameter: axRange
+               ) as? String, !rangeText.isEmpty {
+                return rangeText
+            }
+            let localLocation = selectionRange.location - contextBaseLocation
+            if localLocation >= 0,
+               localLocation + selectionRange.length <= nsContext.length {
+                return nsContext.substring(
+                    with: NSRange(location: localLocation, length: selectionRange.length)
+                )
+            }
+        }
+
         let caretIndex = max(0, min(selectionLocation - contextBaseLocation, nsContext.length))
         let wordRange = currentWordRange(in: contextText, caretIndex: caretIndex)
         guard wordRange.length > 0 else {
@@ -289,24 +351,6 @@ private final class ForceClickSelectionHandler {
             length: wordRange.length
         )
         let axRange = AXValueCreate(.cfRange, &adjustedRange)
-        if let axRange {
-            let status = AXUIElementSetAttributeValue(
-                focusedElement,
-                kAXSelectedTextRangeAttribute as CFString,
-                axRange
-            )
-            if status != AXError.success {
-                return nil
-            }
-        }
-
-        if let selectedText = copyAttribute(
-            element: focusedElement,
-            attribute: kAXSelectedTextAttribute as CFString
-        ) as? String, !selectedText.isEmpty {
-            return selectedText
-        }
-
         if let axRange,
            let rangeText = copyParameterizedAttribute(
                element: focusedElement,
@@ -325,12 +369,11 @@ private final class ForceClickSelectionHandler {
         let changeCount = pasteboard.changeCount
 
         sendCopyCommand()
-        Thread.sleep(forTimeInterval: 0.08)
-        var copiedText = pasteboard.string(forType: .string)
-        let didChange = pasteboard.changeCount != changeCount
-        if !didChange || copiedText?.isEmpty ?? true {
-            copiedText = nil
-        }
+        var copiedText = waitForPasteboardText(
+            pasteboard: pasteboard,
+            originalChangeCount: changeCount,
+            timeout: 0.25
+        )
 
         if copiedText == nil, selectWordIfNeeded {
             if let location = currentEventTapMouseLocation() ?? currentMouseLocation() {
@@ -338,17 +381,34 @@ private final class ForceClickSelectionHandler {
                 Thread.sleep(forTimeInterval: 0.06)
                 let retryChangeCount = pasteboard.changeCount
                 sendCopyCommand()
-                Thread.sleep(forTimeInterval: 0.08)
-                let retryText = pasteboard.string(forType: .string)
-                let retryDidChange = pasteboard.changeCount != retryChangeCount
-                if retryDidChange, !(retryText?.isEmpty ?? true) {
-                    copiedText = retryText
-                }
+                copiedText = waitForPasteboardText(
+                    pasteboard: pasteboard,
+                    originalChangeCount: retryChangeCount,
+                    timeout: 0.25
+                )
             }
         }
 
         snapshot.restore(to: pasteboard)
         return copiedText
+    }
+
+    private func waitForPasteboardText(
+        pasteboard: NSPasteboard,
+        originalChangeCount: Int,
+        timeout: TimeInterval
+    ) -> String? {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            let didChange = pasteboard.changeCount != originalChangeCount
+            if didChange,
+               let text = pasteboard.string(forType: .string),
+               !text.isEmpty {
+                return text
+            }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        return nil
     }
 
     private func sendCopyCommand() {
@@ -424,18 +484,24 @@ private final class ForceClickSelectionPopup {
     private var loadingTimer: Timer?
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
+    private var lastAnchorLocation: CGPoint?
+    private var isShowingTranslation = false
+    private var isShowingLoading = false
+    private let baseTitleSize: CGFloat = 11
+    private let baseTextSize: CGFloat = 12
+    private let baseLoadingSize: CGFloat = 11
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
         originalTitleField = NSTextField(labelWithString: "原文")
-        originalTitleField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        originalTitleField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
         originalTitleField.textColor = .secondaryLabelColor
         originalTitleField.backgroundColor = .clear
         originalTitleField.isEditable = false
         originalTitleField.isSelectable = false
 
         originalTextField = NSTextField(labelWithString: "")
-        originalTextField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        originalTextField.font = NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
         originalTextField.textColor = .labelColor
         originalTextField.backgroundColor = .clear
         originalTextField.isEditable = false
@@ -446,14 +512,14 @@ private final class ForceClickSelectionPopup {
         originalTextField.cell?.usesSingleLineMode = false
 
         translationTitleField = NSTextField(labelWithString: "译文")
-        translationTitleField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        translationTitleField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
         translationTitleField.textColor = .secondaryLabelColor
         translationTitleField.backgroundColor = .clear
         translationTitleField.isEditable = false
         translationTitleField.isSelectable = false
 
         translationTextField = NSTextField(labelWithString: "")
-        translationTextField.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        translationTextField.font = NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
         translationTextField.textColor = .labelColor
         translationTextField.backgroundColor = .clear
         translationTextField.isEditable = false
@@ -464,7 +530,7 @@ private final class ForceClickSelectionPopup {
         translationTextField.cell?.usesSingleLineMode = false
 
         loadingTextField = NSTextField(labelWithString: "")
-        loadingTextField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        loadingTextField.font = NSFont.systemFont(ofSize: baseLoadingSize, weight: .regular)
         loadingTextField.textColor = .secondaryLabelColor
         loadingTextField.backgroundColor = .clear
         loadingTextField.isEditable = false
@@ -503,6 +569,8 @@ private final class ForceClickSelectionPopup {
         window.onDismiss = { [weak window] in
             window?.orderOut(nil)
         }
+
+        applyPopupTextSize(PopupFontPreferences.load())
     }
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID) {
@@ -512,10 +580,13 @@ private final class ForceClickSelectionPopup {
         }
 
         currentRequestID = requestID
+        lastAnchorLocation = location
+        isShowingTranslation = false
+        isShowingLoading = true
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = ""
         startLoadingAnimation()
-        let contentSize = layoutContent(showTranslation: false, showLoading: true)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -527,8 +598,11 @@ private final class ForceClickSelectionPopup {
         }
         stopLoadingAnimation()
         let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastAnchorLocation = location
+        isShowingTranslation = true
+        isShowingLoading = false
         translationTextField.stringValue = trimmedTranslation
-        let contentSize = layoutContent(showTranslation: true, showLoading: false)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -545,12 +619,30 @@ private final class ForceClickSelectionPopup {
 
         currentRequestID = UUID()
         stopLoadingAnimation()
+        lastAnchorLocation = location
+        isShowingTranslation = true
+        isShowingLoading = false
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = trimmedTranslation
-        let contentSize = layoutContent(showTranslation: true, showLoading: false)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    func applyPopupTextSize(_ textSize: CGFloat) {
+        let clampedSize = PopupFontPreferences.clamp(textSize)
+        let scale = clampedSize / baseTextSize
+        originalTitleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
+        originalTextField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+        translationTitleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
+        translationTextField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+        loadingTextField.font = NSFont.systemFont(ofSize: baseLoadingSize * scale, weight: .regular)
+
+        if window.isVisible, let location = lastAnchorLocation {
+            let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
+            setWindowFrame(contentSize: contentSize, near: location, animated: false)
+        }
     }
 
     private func layoutContent(showTranslation: Bool, showLoading: Bool) -> CGSize {
@@ -809,16 +901,109 @@ private final class PopupWindow: NSWindow {
 
 }
 
-@MainActor
-private final class PreferencesWindowController {
-    private let window: NSWindow
-    private let apiKeyValueField: NSTextField
-    private let endpointValueField: NSTextField
-    private let thresholdValueField: NSTextField
-    private let deltaValueField: NSTextField
-    private let windowValueField: NSTextField
+private enum PopupFontPreferences {
+    static let key = "PopupFontSize"
+    static let defaultSize: CGFloat = 12
+    static let minSize: CGFloat = 10
+    static let maxSize: CGFloat = 20
 
-    init() {
+    static func load() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: key)
+        if stored <= 0 {
+            return defaultSize
+        }
+        return clamp(CGFloat(stored))
+    }
+
+    static func save(_ size: CGFloat) {
+        UserDefaults.standard.set(Double(clamp(size)), forKey: key)
+    }
+
+    static func clamp(_ size: CGFloat) -> CGFloat {
+        let rounded = size.rounded()
+        return min(max(rounded, minSize), maxSize)
+    }
+
+    static func format(_ size: CGFloat) -> String {
+        "\(Int(size.rounded())) pt"
+    }
+}
+
+private enum AppPreferences {
+    static let apiKeyKey = "OpenAIAPIKey"
+    static let endpointKey = "OpenAIEndpoint"
+    static let pressureThresholdKey = "ForceClickPressureThreshold"
+    static let pressureDeltaKey = "ForceClickPressureDelta"
+    static let baselineWindowKey = "ForceClickBaselineWindowMs"
+
+    static let defaultThreshold: CGFloat = 3.0
+    static let defaultDelta: CGFloat = 2.0
+    static let defaultBaselineWindowMs: CGFloat = 120
+
+    static func apiKey() -> String {
+        UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
+    }
+
+    static func setApiKey(_ value: String) {
+        UserDefaults.standard.set(value, forKey: apiKeyKey)
+    }
+
+    static func endpoint() -> String {
+        UserDefaults.standard.string(forKey: endpointKey) ?? ""
+    }
+
+    static func setEndpoint(_ value: String) {
+        UserDefaults.standard.set(value, forKey: endpointKey)
+    }
+
+    static func pressureThreshold() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: pressureThresholdKey)
+        return stored > 0 ? CGFloat(stored) : defaultThreshold
+    }
+
+    static func setPressureThreshold(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 0.1)), forKey: pressureThresholdKey)
+    }
+
+    static func pressureDelta() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: pressureDeltaKey)
+        return stored > 0 ? CGFloat(stored) : defaultDelta
+    }
+
+    static func setPressureDelta(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 0.1)), forKey: pressureDeltaKey)
+    }
+
+    static func baselineWindowMs() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: baselineWindowKey)
+        return stored > 0 ? CGFloat(stored) : defaultBaselineWindowMs
+    }
+
+    static func setBaselineWindowMs(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 10)), forKey: baselineWindowKey)
+    }
+}
+
+@MainActor
+private final class PreferencesWindowController: NSObject {
+    private let window: NSWindow
+    private let apiKeyField: NSSecureTextField
+    private let endpointField: NSTextField
+    private let thresholdField: NSTextField
+    private let deltaField: NSTextField
+    private let windowField: NSTextField
+    private let popupFontSizeSlider: NSSlider
+    private let popupFontSizeValueField: NSTextField
+    private let onPopupFontSizeChange: (CGFloat) -> Void
+    private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
+
+    init(
+        onPopupFontSizeChange: @escaping (CGFloat) -> Void,
+        onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void
+    ) {
+        self.onPopupFontSizeChange = onPopupFontSizeChange
+        self.onForceClickSettingsChange = onForceClickSettingsChange
+        NSApplication.shared.activate(ignoringOtherApps: true)
         let contentView = NSView()
         contentView.wantsLayer = true
 
@@ -826,15 +1011,47 @@ private final class PreferencesWindowController {
         titleField.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
         titleField.textColor = .labelColor
 
-        let descriptionField = NSTextField(wrappingLabelWithString: "配置通过环境变量设置，修改后请重启 Digger。")
+        let descriptionField = NSTextField(wrappingLabelWithString: "参数会持久化保存，字体大小实时生效；Force Click 参数修改后需重启。")
         descriptionField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         descriptionField.textColor = .secondaryLabelColor
 
-        apiKeyValueField = PreferencesWindowController.makeValueField()
-        endpointValueField = PreferencesWindowController.makeValueField()
-        thresholdValueField = PreferencesWindowController.makeValueField()
-        deltaValueField = PreferencesWindowController.makeValueField()
-        windowValueField = PreferencesWindowController.makeValueField()
+        apiKeyField = NSSecureTextField()
+        apiKeyField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        apiKeyField.placeholderString = "sk-..."
+        apiKeyField.isEditable = true
+        apiKeyField.isSelectable = true
+        apiKeyField.isBordered = true
+        apiKeyField.focusRingType = .default
+        endpointField = NSTextField()
+        endpointField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        endpointField.placeholderString = "https://api.openai.com/v1"
+        endpointField.isEditable = true
+        endpointField.isSelectable = true
+        thresholdField = NSTextField()
+        thresholdField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        thresholdField.isEditable = true
+        thresholdField.isSelectable = true
+        deltaField = NSTextField()
+        deltaField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        deltaField.isEditable = true
+        deltaField.isSelectable = true
+        windowField = NSTextField()
+        windowField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        windowField.isEditable = true
+        windowField.isSelectable = true
+        popupFontSizeSlider = NSSlider(
+            value: Double(PopupFontPreferences.load()),
+            minValue: Double(PopupFontPreferences.minSize),
+            maxValue: Double(PopupFontPreferences.maxSize),
+            target: nil,
+            action: nil
+        )
+        popupFontSizeSlider.numberOfTickMarks = Int(PopupFontPreferences.maxSize - PopupFontPreferences.minSize) + 1
+        popupFontSizeSlider.allowsTickMarkValuesOnly = true
+        popupFontSizeSlider.isContinuous = true
+        popupFontSizeValueField = PreferencesWindowController.makeValueField()
+        popupFontSizeValueField.alignment = .right
+        popupFontSizeValueField.stringValue = PopupFontPreferences.format(PopupFontPreferences.load())
 
         let stackView = NSStackView()
         stackView.orientation = .vertical
@@ -845,11 +1062,16 @@ private final class PreferencesWindowController {
 
         stackView.addArrangedSubview(titleField)
         stackView.addArrangedSubview(descriptionField)
-        stackView.addArrangedSubview(Self.makeRow(label: "OPENAI_API_KEY", valueField: apiKeyValueField))
-        stackView.addArrangedSubview(Self.makeRow(label: "OPENAI_ENDPOINT", valueField: endpointValueField))
-        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", valueField: thresholdValueField))
-        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_PRESSURE_DELTA", valueField: deltaValueField))
-        stackView.addArrangedSubview(Self.makeRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", valueField: windowValueField))
+        stackView.addArrangedSubview(Self.makeSliderRow(
+            label: "Popup 字号",
+            slider: popupFontSizeSlider,
+            valueField: popupFontSizeValueField
+        ))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
 
         contentView.addSubview(stackView)
 
@@ -871,6 +1093,25 @@ private final class PreferencesWindowController {
         window.center()
         window.contentView = contentView
 
+        super.init()
+        popupFontSizeSlider.target = self
+        popupFontSizeSlider.action = #selector(handleFontSizeChange(_:))
+        apiKeyField.target = self
+        apiKeyField.action = #selector(handleApiKeyChange(_:))
+        endpointField.target = self
+        endpointField.action = #selector(handleEndpointChange(_:))
+        thresholdField.target = self
+        thresholdField.action = #selector(handleThresholdChange(_:))
+        deltaField.target = self
+        deltaField.action = #selector(handleDeltaChange(_:))
+        windowField.target = self
+        windowField.action = #selector(handleWindowMsChange(_:))
+
+        apiKeyField.delegate = self
+        endpointField.delegate = self
+        thresholdField.delegate = self
+        deltaField.delegate = self
+        windowField.delegate = self
         refreshValues()
     }
 
@@ -878,41 +1119,19 @@ private final class PreferencesWindowController {
         refreshValues()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        window.makeFirstResponder(apiKeyField)
     }
 
     private func refreshValues() {
-        let env = ProcessInfo.processInfo.environment
-        let apiKey = env["OPENAI_API_KEY"] ?? ""
-        if apiKey.isEmpty {
-            apiKeyValueField.stringValue = "未设置"
-        } else if apiKey.count <= 8 {
-            apiKeyValueField.stringValue = "已设置 (\(apiKey))"
-        } else {
-            apiKeyValueField.stringValue = "已设置 (…\(apiKey.suffix(4)))"
-        }
+        apiKeyField.stringValue = AppPreferences.apiKey()
+        endpointField.stringValue = AppPreferences.endpoint()
+        thresholdField.stringValue = String(format: "%.2f", AppPreferences.pressureThreshold())
+        deltaField.stringValue = String(format: "%.2f", AppPreferences.pressureDelta())
+        windowField.stringValue = String(format: "%.0f", AppPreferences.baselineWindowMs())
 
-        let endpoint = env["OPENAI_ENDPOINT"] ?? ""
-        endpointValueField.stringValue = endpoint.isEmpty ? "默认 (https://api.openai.com/v1)" : endpoint
-
-        thresholdValueField.stringValue = valueFromEnv(
-            env["FORCE_CLICK_PRESSURE_THRESHOLD"],
-            defaultValue: "3.0"
-        )
-        deltaValueField.stringValue = valueFromEnv(
-            env["FORCE_CLICK_PRESSURE_DELTA"],
-            defaultValue: "2.0"
-        )
-        windowValueField.stringValue = valueFromEnv(
-            env["FORCE_CLICK_BASELINE_WINDOW_MS"],
-            defaultValue: "120 ms"
-        )
-    }
-
-    private func valueFromEnv(_ value: String?, defaultValue: String) -> String {
-        guard let value, !value.isEmpty else {
-            return "\(defaultValue) (默认)"
-        }
-        return value
+        let size = PopupFontPreferences.load()
+        popupFontSizeSlider.doubleValue = Double(size)
+        popupFontSizeValueField.stringValue = PopupFontPreferences.format(size)
     }
 
     private static func makeValueField() -> NSTextField {
@@ -937,6 +1156,132 @@ private final class PreferencesWindowController {
         row.alignment = .firstBaseline
         row.spacing = 12
         return row
+    }
+
+    private static func makeEditRow(label: String, field: NSTextField) -> NSStackView {
+        let labelField = NSTextField(labelWithString: label)
+        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        labelField.textColor = .secondaryLabelColor
+        labelField.setContentHuggingPriority(.required, for: .horizontal)
+        labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let row = NSStackView(views: [labelField, field])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        return row
+    }
+
+    private static func makeSliderRow(label: String, slider: NSSlider, valueField: NSTextField) -> NSStackView {
+        let labelField = NSTextField(labelWithString: label)
+        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        labelField.textColor = .secondaryLabelColor
+        labelField.setContentHuggingPriority(.required, for: .horizontal)
+        labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        slider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        valueField.setContentHuggingPriority(.required, for: .horizontal)
+        valueField.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let row = NSStackView(views: [labelField, slider, valueField])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        return row
+    }
+
+    @objc private func handleFontSizeChange(_ sender: NSSlider) {
+        let size = PopupFontPreferences.clamp(CGFloat(sender.doubleValue))
+        sender.doubleValue = Double(size)
+        popupFontSizeValueField.stringValue = PopupFontPreferences.format(size)
+        PopupFontPreferences.save(size)
+        onPopupFontSizeChange(size)
+    }
+
+    @objc private func handleApiKeyChange(_ sender: NSTextField) {
+        AppPreferences.setApiKey(sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    @objc private func handleEndpointChange(_ sender: NSTextField) {
+        AppPreferences.setEndpoint(sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    @objc private func handleThresholdChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setPressureThreshold(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.2f", AppPreferences.pressureThreshold())
+        notifyForceClickSettingsChange()
+    }
+
+    @objc private func handleDeltaChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setPressureDelta(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.2f", AppPreferences.pressureDelta())
+        notifyForceClickSettingsChange()
+    }
+
+    @objc private func handleWindowMsChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setBaselineWindowMs(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.0f", AppPreferences.baselineWindowMs())
+        notifyForceClickSettingsChange()
+    }
+
+    private func notifyForceClickSettingsChange() {
+        onForceClickSettingsChange(
+            Float(AppPreferences.pressureThreshold()),
+            Float(AppPreferences.pressureDelta()),
+            TimeInterval(AppPreferences.baselineWindowMs() / 1000)
+        )
+    }
+}
+
+extension PreferencesWindowController: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else {
+            return
+        }
+        switch field {
+        case apiKeyField:
+            handleApiKeyChange(field)
+        case endpointField:
+            handleEndpointChange(field)
+        case thresholdField:
+            handleThresholdChange(field)
+        case deltaField:
+            handleDeltaChange(field)
+        case windowField:
+            handleWindowMsChange(field)
+        default:
+            break
+        }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else {
+            return
+        }
+        switch field {
+        case apiKeyField:
+            handleApiKeyChange(field)
+        case endpointField:
+            handleEndpointChange(field)
+        case thresholdField:
+            handleThresholdChange(field)
+        case deltaField:
+            handleDeltaChange(field)
+        case windowField:
+            handleWindowMsChange(field)
+        default:
+            break
+        }
     }
 }
 
@@ -1120,12 +1465,17 @@ private func currentWordRange(in text: String, caretIndex: Int) -> CFRange {
 private final class EventTapController {
     var tap: CFMachPort?
     let monitor: ForceClickMonitor
+    private static let focusStateLock = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
     init(monitor: ForceClickMonitor) {
         self.monitor = monitor
     }
 
     func handle(event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
+        Task { @MainActor in
+            EventTapController.refreshFocusState()
+        }
+        let isPopupOrPreferencesFocused = EventTapController.focusStateLock.withLockUnchecked { $0 }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
@@ -1159,11 +1509,28 @@ private final class EventTapController {
             break
         }
 
-        if monitor.shouldSuppressEvents() {
-            return nil
+        if monitor.shouldSuppressEvents(), !isPopupOrPreferencesFocused {
+            switch type {
+            case .leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown:
+                return nil
+            default:
+                break
+            }
         }
 
         return Unmanaged.passRetained(event)
+    }
+
+    @MainActor
+    private static func refreshFocusState() {
+        let isActive = NSApp.isActive
+        guard let keyWindow = NSApp.keyWindow else {
+            focusStateLock.withLockUnchecked { $0 = false }
+            return
+        }
+        let responder = keyWindow.firstResponder as? NSView
+        let isText = responder is NSTextView || responder is NSTextField
+        focusStateLock.withLockUnchecked { $0 = isActive && isText }
     }
 }
 
@@ -1226,16 +1593,11 @@ struct Digger {
     static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        let preferencesController = PreferencesWindowController()
-        let menuBarController = MenuBarController(preferencesController: preferencesController)
-
+        app.mainMenu = buildMainMenu()
         let manager = OMSManager.shared
-        let thresholdText = ProcessInfo.processInfo.environment["FORCE_CLICK_PRESSURE_THRESHOLD"]
-        let deltaText = ProcessInfo.processInfo.environment["FORCE_CLICK_PRESSURE_DELTA"]
-        let windowText = ProcessInfo.processInfo.environment["FORCE_CLICK_BASELINE_WINDOW_MS"]
-        let threshold = Float(thresholdText ?? "") ?? 3.0
-        let delta = Float(deltaText ?? "") ?? 2.0
-        let windowMs = Double(windowText ?? "") ?? 120
+        let threshold = Float(AppPreferences.pressureThreshold())
+        let delta = Float(AppPreferences.pressureDelta())
+        let windowMs = Double(AppPreferences.baselineWindowMs())
         let selectionHandler = ForceClickSelectionHandler()
         let monitor = ForceClickMonitor(
             pressureThreshold: threshold,
@@ -1246,6 +1608,19 @@ struct Digger {
             }
         )
         let eventTap = ForceClickEventTap(monitor: monitor)
+        let preferencesController = PreferencesWindowController(
+            onPopupFontSizeChange: { newSize in
+                forceClickSelectionPopup.applyPopupTextSize(newSize)
+            },
+            onForceClickSettingsChange: { newThreshold, newDelta, newWindow in
+                monitor.updateSettings(
+                    pressureThreshold: newThreshold,
+                    pressureDelta: newDelta,
+                    baselineWindow: newWindow
+                )
+            }
+        )
+        let menuBarController = MenuBarController(preferencesController: preferencesController)
 
         Task {
             for await touches in manager.touchDataStream {
@@ -1268,5 +1643,34 @@ struct Digger {
                 app.run()
             }
         }
+    }
+
+    @MainActor
+    private static func buildMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(
+            withTitle: "Quit Digger",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: #selector(UndoManager.undo), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: #selector(UndoManager.redo), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        return mainMenu
     }
 }
