@@ -12,6 +12,10 @@ let package = Package(
         .package(
             url: "https://github.com/Kyome22/OpenMultitouchSupport",
             revision: "d7ec2276bea98711530dc610eb05563e9e1ce342"
+        ),
+        .package(
+            url: "https://github.com/MacPaw/OpenAI.git",
+            branch: "main"
         )
     ],
     targets: [
@@ -20,7 +24,8 @@ let package = Package(
         .executableTarget(
             name: "digger",
             dependencies: [
-                .product(name: "OpenMultitouchSupport", package: "OpenMultitouchSupport")
+                .product(name: "OpenMultitouchSupport", package: "OpenMultitouchSupport"),
+                .product(name: "OpenAI", package: "OpenAI")
             ],
             linkerSettings: [
                 .linkedFramework("ApplicationServices")
