@@ -162,11 +162,32 @@ private final class ForceClickSelectionHandler {
     private let systemElement = AXUIElementCreateSystemWide()
     private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
     private let triggerCooldown: TimeInterval = 0.25
+    private let selectionCacheLock = OSAllocatedUnfairLock<SelectionSnapshot?>(uncheckedState: nil)
+    private let selectionCacheTTL: TimeInterval = 0.8
 
     func handleForceClick() {
         guard shouldHandleTrigger() else {
             return
         }
+        if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
+            print(selectedText)
+            translateAndShow(text: selectedText)
+            return
+        }
+
+        if let cachedSelection = consumeSelectionSnapshotIfValid() {
+            _ = restoreSelection(cachedSelection)
+            var cachedText = cachedSelection.text
+            if cachedText.isEmpty {
+                cachedText = copySelectionText(selectWordIfNeeded: false) ?? ""
+            }
+            if !cachedText.isEmpty {
+                print(cachedText)
+                translateAndShow(text: cachedText)
+                return
+            }
+        }
+
         guard let text = fetchOrSelectText(), !text.isEmpty else {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
@@ -177,6 +198,18 @@ private final class ForceClickSelectionHandler {
         }
         print(text)
         translateAndShow(text: text)
+    }
+
+    func cacheSelectionBeforeMouseDown() {
+        guard let snapshot = captureSelectionSnapshot() else {
+            selectionCacheLock.withLockUnchecked { $0 = nil }
+            return
+        }
+        selectionCacheLock.withLockUnchecked { $0 = snapshot }
+    }
+
+    func clearSelectionCache() {
+        selectionCacheLock.withLockUnchecked { $0 = nil }
     }
 
     private func shouldHandleTrigger() -> Bool {
@@ -195,21 +228,145 @@ private final class ForceClickSelectionHandler {
             element: systemElement,
             attribute: kAXFocusedUIElementAttribute as CFString
         ) else {
-            return false
+            return true
         }
         let focusedElement = focusedElementValue as! AXUIElement
         guard let rangeValueAny = copyAttribute(
             element: focusedElement,
             attribute: kAXSelectedTextRangeAttribute as CFString
         ) else {
-            return false
+            return true
         }
         let rangeValue = rangeValueAny as! AXValue
         var selectionRange = CFRange()
         guard AXValueGetValue(rangeValue, .cfRange, &selectionRange) else {
-            return false
+            return true
         }
         return selectionRange.length == 0
+    }
+
+    private func consumeSelectionSnapshotIfValid() -> SelectionSnapshot? {
+        let now = ProcessInfo.processInfo.systemUptime
+        return selectionCacheLock.withLockUnchecked { cache in
+            guard let snapshot = cache else {
+                return nil
+            }
+            if now - snapshot.timestamp > selectionCacheTTL {
+                cache = nil
+                return nil
+            }
+            cache = nil
+            return snapshot
+        }
+    }
+
+    private func captureSelectionSnapshot() -> SelectionSnapshot? {
+        guard let focusedElementValue = copyAttribute(
+            element: systemElement,
+            attribute: kAXFocusedUIElementAttribute as CFString
+        ) else {
+            return nil
+        }
+        let focusedElement = focusedElementValue as! AXUIElement
+        var cachedText = ""
+        if let selectedText = copyAttribute(
+            element: focusedElement,
+            attribute: kAXSelectedTextAttribute as CFString
+        ) as? String, !selectedText.isEmpty {
+            cachedText = selectedText
+        }
+
+        guard let rangeValueAny = copyAttribute(
+            element: focusedElement,
+            attribute: kAXSelectedTextRangeAttribute as CFString
+        ) else {
+            return cachedText.isEmpty ? nil : SelectionSnapshot(
+                element: focusedElement,
+                range: nil,
+                text: cachedText,
+                timestamp: ProcessInfo.processInfo.systemUptime
+            )
+        }
+
+        let rangeValue = rangeValueAny as! AXValue
+        var selectionRange = CFRange()
+        guard AXValueGetValue(rangeValue, .cfRange, &selectionRange), selectionRange.length > 0 else {
+            return cachedText.isEmpty ? nil : SelectionSnapshot(
+                element: focusedElement,
+                range: nil,
+                text: cachedText,
+                timestamp: ProcessInfo.processInfo.systemUptime
+            )
+        }
+
+        if cachedText.isEmpty {
+            var rangeCopy = selectionRange
+            if let axRange = AXValueCreate(.cfRange, &rangeCopy),
+               let rangeText = copyParameterizedAttribute(
+                element: focusedElement,
+                attribute: kAXStringForRangeParameterizedAttribute as CFString,
+                parameter: axRange
+               ) as? String, !rangeText.isEmpty {
+                cachedText = rangeText
+            }
+        }
+
+        return SelectionSnapshot(
+            element: focusedElement,
+            range: selectionRange,
+            text: cachedText,
+            timestamp: ProcessInfo.processInfo.systemUptime
+        )
+    }
+
+    private func restoreSelection(_ snapshot: SelectionSnapshot) -> Bool {
+        guard var range = snapshot.range else {
+            return false
+        }
+        guard let axRange = AXValueCreate(.cfRange, &range) else {
+            return false
+        }
+        let result = AXUIElementSetAttributeValue(
+            snapshot.element,
+            kAXSelectedTextRangeAttribute as CFString,
+            axRange
+        )
+        return result == .success
+    }
+
+    private func fetchSelectedTextOnly() -> String? {
+        guard let focusedElementValue = copyAttribute(
+            element: systemElement,
+            attribute: kAXFocusedUIElementAttribute as CFString
+        ) else {
+            return nil
+        }
+        let focusedElement = focusedElementValue as! AXUIElement
+
+        var remainingNodes = 200
+        if let selectedText = findSelectedText(in: focusedElement, maxDepth: 4, remainingNodes: &remainingNodes) {
+            return selectedText
+        }
+
+        if let focusedWindowValue = copyAttribute(
+            element: systemElement,
+            attribute: kAXFocusedWindowAttribute as CFString
+        ) {
+            let focusedWindow = focusedWindowValue as! AXUIElement
+            remainingNodes = 200
+            if let selectedText = findSelectedText(in: focusedWindow, maxDepth: 4, remainingNodes: &remainingNodes) {
+                return selectedText
+            }
+        }
+
+        if let selectedText = copyAttribute(
+            element: focusedElement,
+            attribute: kAXSelectedTextAttribute as CFString
+        ) as? String, !selectedText.isEmpty {
+            return selectedText
+        }
+
+        return nil
     }
 
     private func translateAndShow(text: String) {
@@ -252,26 +409,7 @@ private final class ForceClickSelectionHandler {
         }
         let focusedElement = focusedElementValue as! AXUIElement
 
-        var remainingNodes = 200
-        if let selectedText = findSelectedText(in: focusedElement, maxDepth: 4, remainingNodes: &remainingNodes) {
-            return selectedText
-        }
-
-        if let focusedWindowValue = copyAttribute(
-            element: systemElement,
-            attribute: kAXFocusedWindowAttribute as CFString
-        ) {
-            let focusedWindow = focusedWindowValue as! AXUIElement
-            remainingNodes = 200
-            if let selectedText = findSelectedText(in: focusedWindow, maxDepth: 4, remainingNodes: &remainingNodes) {
-                return selectedText
-            }
-        }
-
-        if let selectedText = copyAttribute(
-            element: focusedElement,
-            attribute: kAXSelectedTextAttribute as CFString
-        ) as? String, !selectedText.isEmpty {
+        if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             return selectedText
         }
 
@@ -455,6 +593,13 @@ private final class ForceClickSelectionHandler {
             mouseUp?.post(tap: .cgSessionEventTap)
         }
     }
+}
+
+private struct SelectionSnapshot {
+    let element: AXUIElement
+    let range: CFRange?
+    let text: String
+    let timestamp: TimeInterval
 }
 
 private final class DraggableContentView: NSView {
@@ -1465,10 +1610,12 @@ private func currentWordRange(in text: String, caretIndex: Int) -> CFRange {
 private final class EventTapController {
     var tap: CFMachPort?
     let monitor: ForceClickMonitor
+    private let selectionHandler: ForceClickSelectionHandler
     private static let focusStateLock = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
-    init(monitor: ForceClickMonitor) {
+    init(monitor: ForceClickMonitor, selectionHandler: ForceClickSelectionHandler) {
         self.monitor = monitor
+        self.selectionHandler = selectionHandler
     }
 
     func handle(event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
@@ -1502,9 +1649,11 @@ private final class EventTapController {
 
         switch type {
         case .leftMouseDown:
+            selectionHandler.cacheSelectionBeforeMouseDown()
             monitor.setMouseDown(true)
         case .leftMouseUp:
             monitor.setMouseDown(false)
+            selectionHandler.clearSelectionCache()
         default:
             break
         }
@@ -1538,8 +1687,8 @@ private final class ForceClickEventTap {
     private let controller: EventTapController
     private var runLoopSource: CFRunLoopSource?
 
-    init(monitor: ForceClickMonitor) {
-        controller = EventTapController(monitor: monitor)
+    init(monitor: ForceClickMonitor, selectionHandler: ForceClickSelectionHandler) {
+        controller = EventTapController(monitor: monitor, selectionHandler: selectionHandler)
     }
 
     func start() -> Bool {
@@ -1607,7 +1756,7 @@ struct Digger {
                 selectionHandler.handleForceClick()
             }
         )
-        let eventTap = ForceClickEventTap(monitor: monitor)
+        let eventTap = ForceClickEventTap(monitor: monitor, selectionHandler: selectionHandler)
         let preferencesController = PreferencesWindowController(
             onPopupFontSizeChange: { newSize in
                 forceClickSelectionPopup.applyPopupTextSize(newSize)
