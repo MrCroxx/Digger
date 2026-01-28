@@ -27,6 +27,7 @@ final class PreferencesWindowController: NSObject {
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
+    nonisolated(unsafe) private var mouseDownMonitor: Any?
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
@@ -176,6 +177,8 @@ final class PreferencesWindowController: NSObject {
         window.contentView = contentView
 
         super.init()
+        let backgroundClickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(handleBackgroundClick(_:)))
+        contentView.addGestureRecognizer(backgroundClickRecognizer)
         popupFontSizeSlider.target = self
         popupFontSizeSlider.action = #selector(handleFontSizeChange(_:))
         apiKeyField.target = self
@@ -210,6 +213,20 @@ final class PreferencesWindowController: NSObject {
         popupMaxHeightField.delegate = self
         popupTooltipDelayField.delegate = self
         refreshValues()
+
+        mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            guard let self, event.window == self.window else {
+                return event
+            }
+            self.resignFocusIfNeeded(for: event)
+            return event
+        }
+    }
+
+    deinit {
+        if let mouseDownMonitor {
+            NSEvent.removeMonitor(mouseDownMonitor)
+        }
     }
 
     func show() {
@@ -414,33 +431,67 @@ final class PreferencesWindowController: NSObject {
             TimeInterval(AppPreferences.baselineWindowMs() / 1000)
         )
     }
+
+    @objc private func handleBackgroundClick(_ sender: NSClickGestureRecognizer) {
+        guard let contentView = window.contentView else {
+            return
+        }
+        let location = sender.location(in: contentView)
+        let hitView = contentView.hitTest(location)
+        if let hitView, editableTextField(from: hitView) != nil {
+            return
+        }
+        if isEditingTextField() {
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    private func shouldResignFocusOnEndEditing(_ notification: Notification) -> Bool {
+        guard let movementValue = notification.userInfo?[NSText.movementUserInfoKey] as? Int else {
+            return false
+        }
+        return movementValue == NSReturnTextMovement
+    }
+
+    private func editableTextField(from view: NSView) -> NSTextField? {
+        var current: NSView? = view
+        while let candidate = current {
+            if let textField = candidate as? NSTextField, textField.isEditable {
+                return textField
+            }
+            current = candidate.superview
+        }
+        return nil
+    }
+
+    private func isEditingTextField() -> Bool {
+        if let textView = window.firstResponder as? NSTextView {
+            return textView.isFieldEditor
+        }
+        if let textField = window.firstResponder as? NSTextField {
+            return textField.isEditable
+        }
+        return false
+    }
+
+    private func resignFocusIfNeeded(for event: NSEvent) {
+        guard let contentView = window.contentView else {
+            return
+        }
+        let location = contentView.convert(event.locationInWindow, from: nil)
+        let hitView = contentView.hitTest(location)
+        if let hitView, editableTextField(from: hitView) != nil {
+            return
+        }
+        if isEditingTextField() {
+            window.makeFirstResponder(nil)
+        }
+    }
 }
 
 extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField else {
-            return
-        }
-        switch field {
-        case apiKeyField:
-            handleApiKeyChange(field)
-        case endpointField:
-            handleEndpointChange(field)
-        case popupMaxWidthField:
-            handlePopupMaxWidthChange(field)
-        case popupMaxHeightField:
-            handlePopupMaxHeightChange(field)
-        case popupTooltipDelayField:
-            handlePopupTooltipDelayChange(field)
-        case thresholdField:
-            handleThresholdChange(field)
-        case deltaField:
-            handleDeltaChange(field)
-        case windowField:
-            handleWindowMsChange(field)
-        default:
-            break
-        }
+        return
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
@@ -467,5 +518,16 @@ extension PreferencesWindowController: NSTextFieldDelegate {
         default:
             break
         }
+        if shouldResignFocusOnEndEditing(obj) {
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            window.makeFirstResponder(nil)
+            return true
+        }
+        return false
     }
 }
