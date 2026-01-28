@@ -67,6 +67,11 @@ enum UIStrings {
         case popupUntitledFunction
         case preferencesTitle
         case preferencesDescription
+        case preferencesTabGeneral
+        case preferencesTabPopup
+        case preferencesTabFunctions
+        case preferencesTabAdvanced
+        case preferencesTabAPI
         case preferencesPopupFontSizeLabel
         case preferencesPopupTooltipDelayLabel
         case preferencesPopupShortcutLabel
@@ -122,6 +127,11 @@ enum UIStrings {
     enum Preferences {
         static var title: String { value(.preferencesTitle) }
         static var description: String { value(.preferencesDescription) }
+        static var tabGeneral: String { value(.preferencesTabGeneral) }
+        static var tabPopup: String { value(.preferencesTabPopup) }
+        static var tabFunctions: String { value(.preferencesTabFunctions) }
+        static var tabAdvanced: String { value(.preferencesTabAdvanced) }
+        static var tabAPI: String { value(.preferencesTabAPI) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
         static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
         static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
@@ -183,6 +193,11 @@ enum UIStrings {
             .popupUntitledFunction: "Untitled Function",
             .preferencesTitle: "Preferences",
             .preferencesDescription: "Settings are saved automatically.",
+            .preferencesTabGeneral: "General",
+            .preferencesTabPopup: "Popup",
+            .preferencesTabFunctions: "Functions",
+            .preferencesTabAdvanced: "Advanced",
+            .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
             .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
             .preferencesPopupShortcutLabel: "Trigger Shortcut",
@@ -231,6 +246,11 @@ enum UIStrings {
             .popupUntitledFunction: "未命名功能",
             .preferencesTitle: "偏好设置",
             .preferencesDescription: "设置会自动保存。",
+            .preferencesTabGeneral: "通用",
+            .preferencesTabPopup: "弹窗",
+            .preferencesTabFunctions: "自定义功能",
+            .preferencesTabAdvanced: "高级",
+            .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "弹窗字号",
             .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
             .preferencesPopupShortcutLabel: "触发快捷键",
@@ -279,6 +299,11 @@ enum UIStrings {
             .popupUntitledFunction: "無題の機能",
             .preferencesTitle: "環境設定",
             .preferencesDescription: "設定は自動的に保存されます。",
+            .preferencesTabGeneral: "一般",
+            .preferencesTabPopup: "ポップアップ",
+            .preferencesTabFunctions: "カスタム機能",
+            .preferencesTabAdvanced: "詳細",
+            .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
             .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
             .preferencesPopupShortcutLabel: "トリガーショートカット",
