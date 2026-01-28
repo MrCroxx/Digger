@@ -44,10 +44,19 @@ actor OpenAITranslator {
     }
 
     func translate(_ text: String) async throws -> String {
-        let targetLanguage = AppPreferences.translationTargetLanguage()
+        let prompt = PromptTemplates.translation(for: AppPreferences.translationTargetLanguage())
+        return try await runPrompt(prompt, text: text)
+    }
+
+    func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
+        let prompt = PromptTemplates.translation(for: AppPreferences.translationTargetLanguage())
+        return try await runPromptStream(prompt, text: text)
+    }
+
+    func runPrompt(_ prompt: String, text: String) async throws -> String {
         let query = ChatQuery(
             messages: [
-                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
+                .system(.init(content: .textContent(prompt))),
                 .user(.init(content: .string(text)))
             ],
             model: .gpt4_1_mini,
@@ -57,11 +66,10 @@ actor OpenAITranslator {
         return result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
     }
 
-    func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
-        let targetLanguage = AppPreferences.translationTargetLanguage()
+    func runPromptStream(_ prompt: String, text: String) async throws -> AsyncThrowingStream<String, Error> {
         let query = ChatQuery(
             messages: [
-                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
+                .system(.init(content: .textContent(prompt))),
                 .user(.init(content: .string(text)))
             ],
             model: .gpt4_1_mini,

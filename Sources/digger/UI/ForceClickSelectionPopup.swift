@@ -135,10 +135,6 @@ final class ForceClickSelectionPopup {
     private let window: PopupWindow
     private let originalTitleField: NSTextField
     private let originalTextField: NSTextField
-    private let translationTitleField: NSTextField
-    private let translationTextField: NSTextField
-    private let loadingTextField: NSTextField
-    private let dividerView: NSView
     private let contentView: DraggableContentView
     private let headerView: NSView
     private let scrollView: DraggableScrollView
@@ -155,12 +151,19 @@ final class ForceClickSelectionPopup {
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
     private var lastAnchorLocation: CGPoint?
-    private var isShowingTranslation = false
-    private var isShowingLoading = false
     private let baseTitleSize: CGFloat = 11
     private let baseTextSize: CGFloat = 12
-    private let baseLoadingSize: CGFloat = 11
     private let baseTooltipSize: CGFloat = 11
+    private var functionSections: [FunctionSection] = []
+    private var functionIDs: [UUID] = []
+
+    private struct FunctionSection {
+        let function: PopupFunction
+        let titleField: NSTextField
+        let textField: NSTextField
+        let dividerView: NSView
+        var isLoading: Bool
+    }
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -181,36 +184,6 @@ final class ForceClickSelectionPopup {
         originalTextField.maximumNumberOfLines = 0
         originalTextField.cell?.wraps = true
         originalTextField.cell?.usesSingleLineMode = false
-
-        translationTitleField = NSTextField(labelWithString: "")
-        translationTitleField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
-        translationTitleField.textColor = .secondaryLabelColor
-        translationTitleField.backgroundColor = .clear
-        translationTitleField.isEditable = false
-        translationTitleField.isSelectable = false
-
-        translationTextField = NSTextField(labelWithString: "")
-        translationTextField.font = NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
-        translationTextField.textColor = .labelColor
-        translationTextField.backgroundColor = .clear
-        translationTextField.isEditable = false
-        translationTextField.isSelectable = false
-        translationTextField.lineBreakMode = .byWordWrapping
-        translationTextField.maximumNumberOfLines = 0
-        translationTextField.cell?.wraps = true
-        translationTextField.cell?.usesSingleLineMode = false
-
-        loadingTextField = NSTextField(labelWithString: "")
-        loadingTextField.font = NSFont.systemFont(ofSize: baseLoadingSize, weight: .regular)
-        loadingTextField.textColor = .secondaryLabelColor
-        loadingTextField.backgroundColor = .clear
-        loadingTextField.isEditable = false
-        loadingTextField.isSelectable = false
-        loadingTextField.lineBreakMode = .byTruncatingTail
-
-        dividerView = NSView()
-        dividerView.wantsLayer = true
-        dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
 
         copyTranslationButton = ForceClickSelectionPopup.makeIconButton(
             symbolName: "doc.text",
@@ -241,10 +214,6 @@ final class ForceClickSelectionPopup {
         documentView = NSView()
         documentView.addSubview(originalTitleField)
         documentView.addSubview(originalTextField)
-        documentView.addSubview(dividerView)
-        documentView.addSubview(translationTitleField)
-        documentView.addSubview(translationTextField)
-        documentView.addSubview(loadingTextField)
 
         scrollView = DraggableScrollView()
         scrollView.drawsBackground = false
@@ -293,7 +262,7 @@ final class ForceClickSelectionPopup {
         updateActionButtons()
     }
 
-    func showLoading(original: String, near location: CGPoint, requestID: UUID) {
+    func showLoading(original: String, near location: CGPoint, requestID: UUID, functions: [PopupFunction]) {
         let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedOriginal.isEmpty else {
             return
@@ -301,32 +270,30 @@ final class ForceClickSelectionPopup {
 
         currentRequestID = requestID
         lastAnchorLocation = location
-        isShowingTranslation = false
-        isShowingLoading = true
         originalTextField.stringValue = trimmedOriginal
-        translationTextField.stringValue = ""
+        configureFunctionSections(functions)
+        for index in functionSections.indices {
+            functionSections[index].isLoading = true
+        }
         startLoadingAnimation()
         updateActionButtons()
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
+        let contentSize = layoutContent(near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
 
-    func updateTranslation(_ translation: String, for requestID: UUID, near location: CGPoint, isFinal: Bool) {
+    func updateResult(_ result: String, for requestID: UUID, functionID: UUID, near location: CGPoint, isFinal: Bool) {
         guard currentRequestID == requestID else {
             return
         }
-        stopLoadingAnimation()
-        let updatedTranslation = isFinal
-            ? translation.trimmingCharacters(in: .whitespacesAndNewlines)
-            : translation
+        let updatedResult = isFinal
+            ? result.trimmingCharacters(in: .whitespacesAndNewlines)
+            : result
         lastAnchorLocation = location
-        isShowingTranslation = true
-        isShowingLoading = false
-        translationTextField.stringValue = updatedTranslation
+        updateFunctionSection(functionID: functionID, text: updatedResult, isFinal: isFinal)
         updateActionButtons()
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
+        let contentSize = layoutContent(near: location)
         if isFinal {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.18
@@ -338,67 +305,119 @@ final class ForceClickSelectionPopup {
         }
     }
 
-    func show(original: String, translation: String, near location: CGPoint) {
-        let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedOriginal.isEmpty else {
-            return
-        }
-
-        currentRequestID = UUID()
-        stopLoadingAnimation()
-        lastAnchorLocation = location
-        isShowingTranslation = true
-        isShowingLoading = false
-        originalTextField.stringValue = trimmedOriginal
-        translationTextField.stringValue = trimmedTranslation
-        updateActionButtons()
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
-        setWindowFrame(contentSize: contentSize, near: location, animated: false)
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
     func applyPopupTextSize(_ textSize: CGFloat) {
         let clampedSize = PopupFontPreferences.clamp(textSize)
         let scale = clampedSize / baseTextSize
         originalTitleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
         originalTextField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
-        translationTitleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
-        translationTextField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
-        loadingTextField.font = NSFont.systemFont(ofSize: baseLoadingSize * scale, weight: .regular)
+        for index in functionSections.indices {
+            functionSections[index].titleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
+            functionSections[index].textField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+        }
 
         if window.isVisible, let location = lastAnchorLocation {
-            let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
+            let contentSize = layoutContent(near: location)
             setWindowFrame(contentSize: contentSize, near: location, animated: false)
         }
     }
 
     func applyStrings() {
         originalTitleField.stringValue = UIStrings.Popup.originalTitle
-        translationTitleField.stringValue = UIStrings.Popup.translationTitle
+        if let translationIndex = functionSections.firstIndex(where: { $0.function.isTranslation }) {
+            functionSections[translationIndex].titleField.stringValue = UIStrings.Popup.translationTitle
+        }
         copyTranslationButton.tooltipText = UIStrings.Popup.copyTranslation
         copyAllButton.tooltipText = UIStrings.Popup.copyAll
         preferencesButton.tooltipText = UIStrings.Popup.openPreferences
-        if isShowingLoading {
-            updateLoadingText()
-        }
+        updateLoadingText()
     }
 
     func refreshLayout() {
         guard window.isVisible, let location = lastAnchorLocation else {
             return
         }
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
+        let contentSize = layoutContent(near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
     }
 
-    private func layoutContent(showTranslation: Bool, showLoading: Bool, near location: CGPoint?) -> CGSize {
-        dividerView.isHidden = !showTranslation
-        translationTitleField.isHidden = !showTranslation
-        translationTextField.isHidden = !showTranslation
-        loadingTextField.isHidden = !showLoading
+    private func configureFunctionSections(_ functions: [PopupFunction]) {
+        let ids = functions.map { $0.id }
+        let scale = PopupFontPreferences.load() / baseTextSize
+        let needsRebuild = ids != functionIDs
+        if needsRebuild {
+            for section in functionSections {
+                section.titleField.removeFromSuperview()
+                section.textField.removeFromSuperview()
+                section.dividerView.removeFromSuperview()
+            }
+            functionSections.removeAll()
+            functionIDs = ids
+            for function in functions {
+                let titleField = NSTextField(labelWithString: function.title)
+                titleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
+                titleField.textColor = .secondaryLabelColor
+                titleField.backgroundColor = .clear
+                titleField.isEditable = false
+                titleField.isSelectable = false
 
+                let textField = NSTextField(labelWithString: "")
+                textField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+                textField.textColor = .labelColor
+                textField.backgroundColor = .clear
+                textField.isEditable = false
+                textField.isSelectable = false
+                textField.lineBreakMode = .byWordWrapping
+                textField.maximumNumberOfLines = 0
+                textField.cell?.wraps = true
+                textField.cell?.usesSingleLineMode = false
+
+                let dividerView = NSView()
+                dividerView.wantsLayer = true
+                dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
+
+                documentView.addSubview(dividerView)
+                documentView.addSubview(titleField)
+                documentView.addSubview(textField)
+
+                functionSections.append(FunctionSection(
+                    function: function,
+                    titleField: titleField,
+                    textField: textField,
+                    dividerView: dividerView,
+                    isLoading: true
+                ))
+            }
+        } else {
+            for index in functionSections.indices {
+                functionSections[index].titleField.stringValue = functions[index].title
+                let current = functionSections[index]
+                functionSections[index] = FunctionSection(
+                    function: functions[index],
+                    titleField: current.titleField,
+                    textField: current.textField,
+                    dividerView: current.dividerView,
+                    isLoading: current.isLoading
+                )
+            }
+        }
+    }
+
+    private func updateFunctionSection(functionID: UUID, text: String, isFinal: Bool) {
+        guard let index = functionSections.firstIndex(where: { $0.function.id == functionID }) else {
+            return
+        }
+        functionSections[index].textField.stringValue = text
+        if isFinal {
+            functionSections[index].isLoading = false
+            if !functionSections.contains(where: { $0.isLoading }) {
+                stopLoadingAnimation()
+            }
+        } else {
+            functionSections[index].isLoading = true
+        }
+    }
+
+    private func layoutContent(near location: CGPoint?) -> CGSize {
         let previousScrollOrigin = scrollView.contentView.bounds.origin
 
         let padding = CGSize(width: 10, height: 8)
@@ -415,7 +434,6 @@ final class ForceClickSelectionPopup {
         let titleTextSpacing: CGFloat = 2
         let dividerHeight: CGFloat = 1
         let dividerSpacing: CGFloat = 6
-        let loadingSpacing: CGFloat = 6
         let scrollerClearance: CGFloat = 12
         let paddingLeft = padding.width
 
@@ -433,95 +451,94 @@ final class ForceClickSelectionPopup {
         let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
 
-        func measureLayout(maxWidth: CGFloat, paddingRight: CGFloat) -> (contentWidth: CGFloat, contentHeight: CGFloat, sizes: (CGSize, CGSize, CGSize, CGSize, CGSize)) {
+        func measureLayout(
+            maxWidth: CGFloat,
+            paddingRight: CGFloat
+        ) -> (contentWidth: CGFloat, contentHeight: CGFloat, sizes: (CGSize, CGSize, [CGSize], [CGSize])) {
             let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
-            let translationTitleSize = (translationTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
             let textMaxWidth = maxWidth - paddingLeft - paddingRight
             let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
-            let translationTextSize = textSize(for: translationTextField, maxWidth: textMaxWidth)
-            let loadingTextSize = textSize(for: loadingTextField, maxWidth: textMaxWidth)
+            var sectionTitleSizes: [CGSize] = []
+            var sectionTextSizes: [CGSize] = []
+            sectionTitleSizes.reserveCapacity(functionSections.count)
+            sectionTextSizes.reserveCapacity(functionSections.count)
+            for section in functionSections {
+                let titleSize = (section.titleField.stringValue as NSString).size(withAttributes: titleAttributes)
+                let textSizeValue = textSize(for: section.textField, maxWidth: textMaxWidth)
+                sectionTitleSizes.append(titleSize)
+                sectionTextSizes.append(textSizeValue)
+            }
 
-            let contentTextWidth = max(
-                originalTitleSize.width,
-                originalTextSize.width,
-                showTranslation ? max(translationTitleSize.width, translationTextSize.width) : 0,
-                showLoading ? loadingTextSize.width : 0
-            )
+            var contentTextWidth = max(originalTitleSize.width, originalTextSize.width)
+            for index in sectionTitleSizes.indices {
+                let sectionWidth = max(sectionTitleSizes[index].width, sectionTextSizes[index].width)
+                contentTextWidth = max(contentTextWidth, sectionWidth)
+            }
             let contentWidth = max(minWidth, min(maxWidth, contentTextWidth + paddingLeft + paddingRight))
             let adjustedTextMaxWidth = contentWidth - paddingLeft - paddingRight
             if abs(adjustedTextMaxWidth - textMaxWidth) > 0.5 {
                 let adjustedOriginalTextSize = textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
-                let adjustedTranslationTextSize = textSize(for: translationTextField, maxWidth: adjustedTextMaxWidth)
-                let adjustedLoadingTextSize = textSize(for: loadingTextField, maxWidth: adjustedTextMaxWidth)
+                var adjustedSectionTextSizes: [CGSize] = []
+                adjustedSectionTextSizes.reserveCapacity(functionSections.count)
+                for section in functionSections {
+                    adjustedSectionTextSizes.append(textSize(for: section.textField, maxWidth: adjustedTextMaxWidth))
+                }
                 return (
                     contentWidth,
                     contentHeight(
                         originalTitleSize: originalTitleSize,
-                        translationTitleSize: translationTitleSize,
                         originalTextSize: adjustedOriginalTextSize,
-                        translationTextSize: adjustedTranslationTextSize,
-                        loadingTextSize: adjustedLoadingTextSize,
+                        sectionTitleSizes: sectionTitleSizes,
+                        sectionTextSizes: adjustedSectionTextSizes,
                         titleTextSpacing: titleTextSpacing,
                         dividerHeight: dividerHeight,
                         dividerSpacing: dividerSpacing,
-                        loadingSpacing: loadingSpacing,
-                        padding: padding,
-                        showTranslation: showTranslation,
-                        showLoading: showLoading
+                        padding: padding
                     ),
-                    (originalTitleSize, translationTitleSize, adjustedOriginalTextSize, adjustedTranslationTextSize, adjustedLoadingTextSize)
+                    (originalTitleSize, adjustedOriginalTextSize, sectionTitleSizes, adjustedSectionTextSizes)
                 )
             }
 
             let height = contentHeight(
                 originalTitleSize: originalTitleSize,
-                translationTitleSize: translationTitleSize,
                 originalTextSize: originalTextSize,
-                translationTextSize: translationTextSize,
-                loadingTextSize: loadingTextSize,
+                sectionTitleSizes: sectionTitleSizes,
+                sectionTextSizes: sectionTextSizes,
                 titleTextSpacing: titleTextSpacing,
                 dividerHeight: dividerHeight,
                 dividerSpacing: dividerSpacing,
-                loadingSpacing: loadingSpacing,
-                padding: padding,
-                showTranslation: showTranslation,
-                showLoading: showLoading
+                padding: padding
             )
-            return (contentWidth, height, (originalTitleSize, translationTitleSize, originalTextSize, translationTextSize, loadingTextSize))
+            return (contentWidth, height, (originalTitleSize, originalTextSize, sectionTitleSizes, sectionTextSizes))
         }
 
         func contentHeight(
             originalTitleSize: CGSize,
-            translationTitleSize: CGSize,
             originalTextSize: CGSize,
-            translationTextSize: CGSize,
-            loadingTextSize: CGSize,
+            sectionTitleSizes: [CGSize],
+            sectionTextSizes: [CGSize],
             titleTextSpacing: CGFloat,
             dividerHeight: CGFloat,
             dividerSpacing: CGFloat,
-            loadingSpacing: CGFloat,
-            padding: CGSize,
-            showTranslation: Bool,
-            showLoading: Bool
+            padding: CGSize
         ) -> CGFloat {
             let originalTitleHeight = ceil(originalTitleSize.height)
-            let translationTitleHeight = ceil(translationTitleSize.height)
             let originalTextHeight = max(ceil(originalTextSize.height), 16)
-            let translationTextHeight = max(ceil(translationTextSize.height), 16)
-            let loadingTextHeight = max(ceil(loadingTextSize.height), 14)
-            return padding.height * 2 + 4
+            var height = padding.height * 2 + 4
                 + originalTitleHeight
                 + titleTextSpacing
                 + originalTextHeight
-                + (showLoading ? (loadingSpacing + loadingTextHeight) : 0)
-                + (showTranslation
-                    ? (dividerSpacing
-                        + dividerHeight
-                        + dividerSpacing
-                        + translationTitleHeight
-                        + titleTextSpacing
-                        + translationTextHeight)
-                    : 0)
+            for index in sectionTitleSizes.indices {
+                let titleHeight = ceil(sectionTitleSizes[index].height)
+                let textHeight = max(ceil(sectionTextSizes[index].height), 16)
+                height += dividerSpacing
+                    + dividerHeight
+                    + dividerSpacing
+                    + titleHeight
+                    + titleTextSpacing
+                    + textHeight
+            }
+            return height
         }
 
         var paddingRight = padding.width
@@ -546,10 +563,9 @@ final class ForceClickSelectionPopup {
 
         let contentWidth = measurement.contentWidth
         let originalTitleSize = measurement.sizes.0
-        let translationTitleSize = measurement.sizes.1
-        let originalTextSize = measurement.sizes.2
-        let translationTextSize = measurement.sizes.3
-        let loadingTextSize = measurement.sizes.4
+        let originalTextSize = measurement.sizes.1
+        let sectionTitleSizes = measurement.sizes.2
+        let sectionTextSizes = measurement.sizes.3
         let contentHeight = measurement.contentHeight
         let visibleHeight = min(contentHeight, maxHeightLimit)
 
@@ -557,7 +573,9 @@ final class ForceClickSelectionPopup {
         let textX = paddingLeft
         let availableWidth = contentWidth - paddingLeft - paddingRight
         originalTextField.preferredMaxLayoutWidth = availableWidth
-        translationTextField.preferredMaxLayoutWidth = availableWidth
+        for section in functionSections {
+            section.textField.preferredMaxLayoutWidth = availableWidth
+        }
 
         var y = contentHeight - padding.height - ceil(originalTitleSize.height)
 
@@ -575,40 +593,31 @@ final class ForceClickSelectionPopup {
             width: availableWidth,
             height: max(ceil(originalTextSize.height), 16)
         )
-        if showLoading {
-            y -= loadingSpacing + max(ceil(loadingTextSize.height), 14)
-            loadingTextField.frame = NSRect(
-                x: textX,
-                y: y,
-                width: availableWidth,
-                height: max(ceil(loadingTextSize.height), 14)
-            )
-        }
 
-        if showTranslation {
+        for index in functionSections.indices {
+            let section = functionSections[index]
+            let titleSize = sectionTitleSizes[index]
+            let textSizeValue = sectionTextSizes[index]
             y -= dividerSpacing + dividerHeight
-
-            dividerView.frame = NSRect(
+            section.dividerView.frame = NSRect(
                 x: paddingLeft,
                 y: y,
                 width: availableWidth,
                 height: dividerHeight
             )
-            y -= dividerSpacing + ceil(translationTitleSize.height)
-
-            translationTitleField.frame = NSRect(
+            y -= dividerSpacing + ceil(titleSize.height)
+            section.titleField.frame = NSRect(
                 x: titleX,
                 y: y,
                 width: availableWidth,
-                height: ceil(translationTitleSize.height)
+                height: ceil(titleSize.height)
             )
-            y -= titleTextSpacing + max(ceil(translationTextSize.height), 16)
-
-            translationTextField.frame = NSRect(
+            y -= titleTextSpacing + max(ceil(textSizeValue.height), 16)
+            section.textField.frame = NSRect(
                 x: textX,
                 y: y,
                 width: availableWidth,
-                height: max(ceil(translationTextSize.height), 16)
+                height: max(ceil(textSizeValue.height), 16)
             )
         }
 
@@ -674,17 +683,25 @@ final class ForceClickSelectionPopup {
 
     private func updateLoadingText() {
         let dots = String(repeating: "·", count: loadingDotCount)
-        loadingTextField.stringValue = UIStrings.Translation.loadingPrefix + dots
+        let loadingText = UIStrings.Popup.processingPrefix + dots
+        for index in functionSections.indices where functionSections[index].isLoading {
+            functionSections[index].textField.stringValue = loadingText
+        }
     }
 
     private func updateActionButtons() {
-        let hasTranslation = !translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasTranslation = functionSections.first(where: { $0.function.isTranslation })
+            .map { !$0.isLoading && !$0.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            ?? false
+        let hasAnyResult = functionSections.contains {
+            !$0.isLoading && !$0.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         copyTranslationButton.isEnabled = hasTranslation
-        copyAllButton.isEnabled = hasTranslation
+        copyAllButton.isEnabled = hasAnyResult
         let enabledAlpha: CGFloat = 1
         let disabledAlpha: CGFloat = 0.4
         copyTranslationButton.alphaValue = hasTranslation ? enabledAlpha : disabledAlpha
-        copyAllButton.alphaValue = hasTranslation ? enabledAlpha : disabledAlpha
+        copyAllButton.alphaValue = hasAnyResult ? enabledAlpha : disabledAlpha
     }
 
     private func handleHover(_ isHovering: Bool, for button: HoverableIconButton) {
@@ -729,15 +746,31 @@ final class ForceClickSelectionPopup {
 
     @objc private func handleCopyTranslation() {
         hideTooltip()
-        let text = translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let translationSection = functionSections.first(where: { $0.function.isTranslation }),
+              !translationSection.isLoading else {
+            return
+        }
+        let text = translationSection.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         copyToPasteboard(text)
     }
 
     @objc private func handleCopyAll() {
         hideTooltip()
         let original = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let translation = translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let combined = translation.isEmpty ? original : "\(original)\n\n\(translation)"
+        var sections: [String] = []
+        if !original.isEmpty {
+            sections.append("\(UIStrings.Popup.originalTitle)\n\(original)")
+        }
+        for section in functionSections where !section.isLoading {
+            let result = section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !result.isEmpty else {
+                continue
+            }
+            let title = section.titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayTitle = title.isEmpty ? UIStrings.Popup.untitledFunction : title
+            sections.append("\(displayTitle)\n\(result)")
+        }
+        let combined = sections.joined(separator: "\n\n")
         copyToPasteboard(combined)
     }
 

@@ -58,7 +58,8 @@ struct Digger {
                     pressureDelta: newDelta,
                     baselineWindow: newWindow
                 )
-            }
+            },
+            onCustomFunctionsChange: {}
         )
         forceClickSelectionPopup.onOpenPreferences = {
             preferencesController.show()

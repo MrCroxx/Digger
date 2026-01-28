@@ -57,6 +57,10 @@ enum UIStrings {
         case popupCopyTranslation
         case popupCopyAll
         case popupOpenPreferences
+        case popupProcessingPrefix
+        case popupEmptyResult
+        case popupEmptyPrompt
+        case popupUntitledFunction
         case preferencesTitle
         case preferencesDescription
         case preferencesPopupFontSizeLabel
@@ -64,6 +68,15 @@ enum UIStrings {
         case preferencesLanguageLabel
         case preferencesTargetLanguageLabel
         case preferencesStreamingLabel
+        case preferencesCustomFunctionsTitle
+        case preferencesCustomFunctionsDescription
+        case preferencesFunctionTitleLabel
+        case preferencesFunctionPromptLabel
+        case preferencesAddFunction
+        case preferencesRemoveFunction
+        case preferencesFunctionTitlePlaceholder
+        case preferencesFunctionPromptPlaceholder
+        case preferencesFunctionDefaultTitle
         case menuPreferences
         case menuQuit
         case menuEdit
@@ -90,6 +103,10 @@ enum UIStrings {
         static var copyTranslation: String { value(.popupCopyTranslation) }
         static var copyAll: String { value(.popupCopyAll) }
         static var openPreferences: String { value(.popupOpenPreferences) }
+        static var processingPrefix: String { value(.popupProcessingPrefix) }
+        static var emptyResult: String { value(.popupEmptyResult) }
+        static var emptyPrompt: String { value(.popupEmptyPrompt) }
+        static var untitledFunction: String { value(.popupUntitledFunction) }
     }
 
     enum Preferences {
@@ -100,6 +117,15 @@ enum UIStrings {
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
+        static var customFunctionsTitle: String { value(.preferencesCustomFunctionsTitle) }
+        static var customFunctionsDescription: String { value(.preferencesCustomFunctionsDescription) }
+        static var functionTitleLabel: String { value(.preferencesFunctionTitleLabel) }
+        static var functionPromptLabel: String { value(.preferencesFunctionPromptLabel) }
+        static var addFunction: String { value(.preferencesAddFunction) }
+        static var removeFunction: String { value(.preferencesRemoveFunction) }
+        static var functionTitlePlaceholder: String { value(.preferencesFunctionTitlePlaceholder) }
+        static var functionPromptPlaceholder: String { value(.preferencesFunctionPromptPlaceholder) }
+        static var functionDefaultTitle: String { value(.preferencesFunctionDefaultTitle) }
     }
 
     enum Menu {
@@ -133,8 +159,12 @@ enum UIStrings {
             .popupOriginalTitle: "Original",
             .popupTranslationTitle: "Translation",
             .popupCopyTranslation: "Copy Translation",
-            .popupCopyAll: "Copy Original + Translation",
+            .popupCopyAll: "Copy All Results",
             .popupOpenPreferences: "Open Preferences",
+            .popupProcessingPrefix: "Processing",
+            .popupEmptyResult: "Result is empty",
+            .popupEmptyPrompt: "Prompt is empty",
+            .popupUntitledFunction: "Untitled Function",
             .preferencesTitle: "Preferences",
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
@@ -142,6 +172,15 @@ enum UIStrings {
             .preferencesLanguageLabel: "Language",
             .preferencesTargetLanguageLabel: "Target Language",
             .preferencesStreamingLabel: "Stream Translation",
+            .preferencesCustomFunctionsTitle: "Custom Functions",
+            .preferencesCustomFunctionsDescription: "Add prompts that apply to selected text.",
+            .preferencesFunctionTitleLabel: "Title",
+            .preferencesFunctionPromptLabel: "Prompt",
+            .preferencesAddFunction: "Add Function",
+            .preferencesRemoveFunction: "Remove",
+            .preferencesFunctionTitlePlaceholder: "Function title",
+            .preferencesFunctionPromptPlaceholder: "Enter prompt",
+            .preferencesFunctionDefaultTitle: "New Function",
             .menuPreferences: "Preferences…",
             .menuQuit: "Quit Digger",
             .menuEdit: "Edit",
@@ -162,8 +201,12 @@ enum UIStrings {
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "译文",
             .popupCopyTranslation: "复制译文",
-            .popupCopyAll: "复制原文和译文",
+            .popupCopyAll: "复制所有结果",
             .popupOpenPreferences: "打开偏好设置",
+            .popupProcessingPrefix: "处理中",
+            .popupEmptyResult: "结果为空",
+            .popupEmptyPrompt: "提示语为空",
+            .popupUntitledFunction: "未命名功能",
             .preferencesTitle: "偏好设置",
             .preferencesDescription: "设置会自动保存。",
             .preferencesPopupFontSizeLabel: "弹窗字号",
@@ -171,6 +214,15 @@ enum UIStrings {
             .preferencesLanguageLabel: "语言",
             .preferencesTargetLanguageLabel: "目标语言",
             .preferencesStreamingLabel: "流式译文",
+            .preferencesCustomFunctionsTitle: "自定义功能",
+            .preferencesCustomFunctionsDescription: "添加应用于选中文本的提示语。",
+            .preferencesFunctionTitleLabel: "标题",
+            .preferencesFunctionPromptLabel: "Prompt",
+            .preferencesAddFunction: "添加功能",
+            .preferencesRemoveFunction: "删除",
+            .preferencesFunctionTitlePlaceholder: "功能标题",
+            .preferencesFunctionPromptPlaceholder: "输入 prompt",
+            .preferencesFunctionDefaultTitle: "新功能",
             .menuPreferences: "偏好设置…",
             .menuQuit: "退出 Digger",
             .menuEdit: "编辑",
@@ -191,8 +243,12 @@ enum UIStrings {
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "翻訳",
             .popupCopyTranslation: "翻訳をコピー",
-            .popupCopyAll: "原文と翻訳をコピー",
+            .popupCopyAll: "すべての結果をコピー",
             .popupOpenPreferences: "環境設定を開く",
+            .popupProcessingPrefix: "処理中",
+            .popupEmptyResult: "結果が空です",
+            .popupEmptyPrompt: "プロンプトが空です",
+            .popupUntitledFunction: "無題の機能",
             .preferencesTitle: "環境設定",
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
@@ -200,6 +256,15 @@ enum UIStrings {
             .preferencesLanguageLabel: "言語",
             .preferencesTargetLanguageLabel: "翻訳先",
             .preferencesStreamingLabel: "ストリーミング翻訳",
+            .preferencesCustomFunctionsTitle: "カスタム機能",
+            .preferencesCustomFunctionsDescription: "選択したテキストに適用するプロンプトを追加します。",
+            .preferencesFunctionTitleLabel: "タイトル",
+            .preferencesFunctionPromptLabel: "プロンプト",
+            .preferencesAddFunction: "機能を追加",
+            .preferencesRemoveFunction: "削除",
+            .preferencesFunctionTitlePlaceholder: "機能タイトル",
+            .preferencesFunctionPromptPlaceholder: "プロンプトを入力",
+            .preferencesFunctionDefaultTitle: "新規機能",
             .menuPreferences: "環境設定…",
             .menuQuit: "Digger を終了",
             .menuEdit: "編集",
