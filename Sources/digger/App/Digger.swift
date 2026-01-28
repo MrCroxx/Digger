@@ -60,6 +60,9 @@ struct Digger {
                 )
             }
         )
+        forceClickSelectionPopup.onOpenPreferences = {
+            preferencesController.show()
+        }
         let menuController = MenuBarController(preferencesController: preferencesController)
         menuBarController = menuController
 

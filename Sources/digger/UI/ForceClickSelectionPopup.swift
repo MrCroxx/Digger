@@ -27,6 +27,109 @@ final class DraggableScrollView: NSScrollView {
     }
 }
 
+final class HoverableIconButton: NSButton {
+    var onHover: ((Bool) -> Void)?
+    var tooltipText: String = ""
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = hoverTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let area = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        onHover?(false)
+    }
+}
+
+final class HoverTooltipWindow: NSWindow {
+    private let label: NSTextField
+    private let padding = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+    private let maxTextWidth: CGFloat = 220
+
+    init() {
+        label = NSTextField(wrappingLabelWithString: "")
+        label.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
+        label.cell?.wraps = true
+        label.cell?.usesSingleLineMode = false
+        let contentView = NSView()
+        contentView.addSubview(label)
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 120, height: 24),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .transient]
+        contentView.wantsLayer = true
+        contentView.layer?.cornerRadius = 6
+        contentView.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.95).cgColor
+        self.contentView = contentView
+    }
+
+    override var canBecomeKey: Bool {
+        false
+    }
+
+    func show(text: String, near anchor: NSRect, fontSize: CGFloat) {
+        label.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
+        label.stringValue = text
+        let font = label.font ?? NSFont.systemFont(ofSize: 11, weight: .regular)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .paragraphStyle: paragraphStyle
+        ]
+        let attributed = NSAttributedString(string: text, attributes: attributes)
+        let maxSize = CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude)
+        let boundingRect = attributed.boundingRect(
+            with: maxSize,
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let textWidth = ceil(boundingRect.width) + 4
+        let textHeight = ceil(boundingRect.height) + 2
+        let contentWidth = min(maxTextWidth, textWidth)
+        let width = contentWidth + padding.left + padding.right
+        let height = textHeight + padding.top + padding.bottom
+        label.preferredMaxLayoutWidth = contentWidth
+        label.frame = NSRect(
+            x: padding.left,
+            y: padding.bottom,
+            width: contentWidth,
+            height: textHeight
+        )
+        setContentSize(NSSize(width: width, height: height))
+        let x = anchor.midX - width * 0.5
+        let y = anchor.minY - height - 6
+        setFrameOrigin(NSPoint(x: x, y: y))
+        orderFront(nil)
+    }
+
+    func hide() {
+        orderOut(nil)
+    }
+}
+
 @MainActor
 final class ForceClickSelectionPopup {
     private let window: PopupWindow
@@ -37,8 +140,17 @@ final class ForceClickSelectionPopup {
     private let loadingTextField: NSTextField
     private let dividerView: NSView
     private let contentView: DraggableContentView
+    private let headerView: NSView
     private let scrollView: DraggableScrollView
     private let documentView: NSView
+    private let copyTranslationButton: HoverableIconButton
+    private let copyAllButton: HoverableIconButton
+    private let preferencesButton: HoverableIconButton
+    private let actionButtons: [HoverableIconButton]
+    private let tooltipWindow: HoverTooltipWindow
+    private var tooltipTimer: Timer?
+    private weak var hoveredButton: HoverableIconButton?
+    var onOpenPreferences: (() -> Void)?
     private var loadingTimer: Timer?
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
@@ -48,6 +160,7 @@ final class ForceClickSelectionPopup {
     private let baseTitleSize: CGFloat = 11
     private let baseTextSize: CGFloat = 12
     private let baseLoadingSize: CGFloat = 11
+    private let baseTooltipSize: CGFloat = 11
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -99,10 +212,32 @@ final class ForceClickSelectionPopup {
         dividerView.wantsLayer = true
         dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
 
+        copyTranslationButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "doc.text",
+            toolTip: UIStrings.Popup.copyTranslation,
+            target: nil,
+            action: #selector(handleCopyTranslation)
+        )
+        copyAllButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "doc.on.doc",
+            toolTip: UIStrings.Popup.copyAll,
+            target: nil,
+            action: #selector(handleCopyAll)
+        )
+        preferencesButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "gearshape",
+            toolTip: UIStrings.Popup.openPreferences,
+            target: nil,
+            action: #selector(handleOpenPreferences)
+        )
+        actionButtons = [copyTranslationButton, copyAllButton, preferencesButton]
+        tooltipWindow = HoverTooltipWindow()
+
         contentView = DraggableContentView()
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
+        headerView = NSView()
         documentView = NSView()
         documentView.addSubview(originalTitleField)
         documentView.addSubview(originalTextField)
@@ -119,7 +254,11 @@ final class ForceClickSelectionPopup {
         scrollView.scrollerStyle = .overlay
         scrollView.borderType = .noBorder
         scrollView.documentView = documentView
+        headerView.addSubview(copyTranslationButton)
+        headerView.addSubview(copyAllButton)
+        headerView.addSubview(preferencesButton)
         contentView.addSubview(scrollView)
+        contentView.addSubview(headerView)
 
         window = PopupWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -139,8 +278,19 @@ final class ForceClickSelectionPopup {
             window?.orderOut(nil)
         }
 
+        for button in actionButtons {
+            button.target = self
+            button.onHover = { [weak self, weak button] isHovering in
+                guard let self, let button else {
+                    return
+                }
+                self.handleHover(isHovering, for: button)
+            }
+        }
+
         applyPopupTextSize(PopupFontPreferences.load())
         applyStrings()
+        updateActionButtons()
     }
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID) {
@@ -156,6 +306,7 @@ final class ForceClickSelectionPopup {
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = ""
         startLoadingAnimation()
+        updateActionButtons()
         let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
@@ -174,6 +325,7 @@ final class ForceClickSelectionPopup {
         isShowingTranslation = true
         isShowingLoading = false
         translationTextField.stringValue = updatedTranslation
+        updateActionButtons()
         let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         if isFinal {
             NSAnimationContext.runAnimationGroup { context in
@@ -200,6 +352,7 @@ final class ForceClickSelectionPopup {
         isShowingLoading = false
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = trimmedTranslation
+        updateActionButtons()
         let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
@@ -224,6 +377,9 @@ final class ForceClickSelectionPopup {
     func applyStrings() {
         originalTitleField.stringValue = UIStrings.Popup.originalTitle
         translationTitleField.stringValue = UIStrings.Popup.translationTitle
+        copyTranslationButton.tooltipText = UIStrings.Popup.copyTranslation
+        copyAllButton.tooltipText = UIStrings.Popup.copyAll
+        preferencesButton.tooltipText = UIStrings.Popup.openPreferences
         if isShowingLoading {
             updateLoadingText()
         }
@@ -248,6 +404,8 @@ final class ForceClickSelectionPopup {
         let padding = CGSize(width: 10, height: 8)
         let minWidth: CGFloat = 120
         let baseMaxWidth: CGFloat = 320
+        let controlsHeight: CGFloat = 18
+        let controlsSpacing: CGFloat = 6
         let preferredMaxWidth = AppPreferences.popupMaxWidth()
         let preferredMaxHeight = AppPreferences.popupMaxHeight()
         let screen = location.flatMap { screenContaining($0) } ?? NSScreen.main ?? NSScreen.screens.first
@@ -454,17 +612,27 @@ final class ForceClickSelectionPopup {
             )
         }
 
-        let documentSize = CGSize(width: contentWidth, height: contentHeight)
-        let visibleSize = CGSize(width: contentWidth, height: visibleHeight)
-        documentView.frame = NSRect(origin: .zero, size: documentSize)
-        contentView.frame = NSRect(origin: .zero, size: visibleSize)
-        scrollView.frame = contentView.bounds
+        let headerHeight = controlsHeight + controlsSpacing
+        documentView.frame = NSRect(origin: .zero, size: CGSize(width: contentWidth, height: contentHeight))
+        contentView.frame = NSRect(origin: .zero, size: CGSize(width: contentWidth, height: visibleHeight + headerHeight))
+        scrollView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: visibleHeight)
+        headerView.frame = NSRect(x: 0, y: visibleHeight, width: contentWidth, height: headerHeight)
         scrollView.hasVerticalScroller = needsVerticalScroll
         let maxScrollY = max(0, contentHeight - visibleHeight)
         let bottomY = scrollView.contentView.isFlipped ? maxScrollY : 0
         scrollView.contentView.scroll(to: NSPoint(x: previousScrollOrigin.x, y: bottomY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
-        return visibleSize
+
+        let buttonSize: CGFloat = 18
+        let buttonSpacing: CGFloat = 6
+        let buttonsWidth = CGFloat(actionButtons.count) * buttonSize + CGFloat(max(0, actionButtons.count - 1)) * buttonSpacing
+        let buttonsX = max(paddingLeft, contentWidth - padding.width - buttonsWidth)
+        let buttonsY = (headerHeight - buttonSize) * 0.5
+        for (index, button) in actionButtons.enumerated() {
+            let x = buttonsX + CGFloat(index) * (buttonSize + buttonSpacing)
+            button.frame = NSRect(x: x, y: buttonsY, width: buttonSize, height: buttonSize)
+        }
+        return CGSize(width: contentWidth, height: visibleHeight + headerHeight)
     }
 
     private func setWindowFrame(contentSize: CGSize, near location: CGPoint, animated: Bool) {
@@ -507,6 +675,104 @@ final class ForceClickSelectionPopup {
     private func updateLoadingText() {
         let dots = String(repeating: "·", count: loadingDotCount)
         loadingTextField.stringValue = UIStrings.Translation.loadingPrefix + dots
+    }
+
+    private func updateActionButtons() {
+        let hasTranslation = !translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        copyTranslationButton.isEnabled = hasTranslation
+        copyAllButton.isEnabled = hasTranslation
+        let enabledAlpha: CGFloat = 1
+        let disabledAlpha: CGFloat = 0.4
+        copyTranslationButton.alphaValue = hasTranslation ? enabledAlpha : disabledAlpha
+        copyAllButton.alphaValue = hasTranslation ? enabledAlpha : disabledAlpha
+    }
+
+    private func handleHover(_ isHovering: Bool, for button: HoverableIconButton) {
+        if isHovering {
+            hoveredButton = button
+            scheduleTooltip(for: button)
+        } else if hoveredButton === button {
+            hideTooltip()
+        }
+    }
+
+    private func scheduleTooltip(for button: HoverableIconButton) {
+        tooltipTimer?.invalidate()
+        let delay = AppPreferences.popupTooltipDelayMs() / 1000
+        tooltipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self, weak button] _ in
+            Task { @MainActor in
+                guard let self, let button, self.hoveredButton === button else {
+                    return
+                }
+                self.showTooltip(for: button)
+            }
+        }
+    }
+
+    private func showTooltip(for button: HoverableIconButton) {
+        guard let window = button.window else {
+            return
+        }
+        let rectInWindow = button.convert(button.bounds, to: nil)
+        let rectOnScreen = window.convertToScreen(rectInWindow)
+        let scale = PopupFontPreferences.load() / baseTextSize
+        let fontSize = baseTooltipSize * scale
+        tooltipWindow.show(text: button.tooltipText, near: rectOnScreen, fontSize: fontSize)
+    }
+
+    private func hideTooltip() {
+        tooltipTimer?.invalidate()
+        tooltipTimer = nil
+        hoveredButton = nil
+        tooltipWindow.hide()
+    }
+
+    @objc private func handleCopyTranslation() {
+        hideTooltip()
+        let text = translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        copyToPasteboard(text)
+    }
+
+    @objc private func handleCopyAll() {
+        hideTooltip()
+        let original = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let translation = translationTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = translation.isEmpty ? original : "\(original)\n\n\(translation)"
+        copyToPasteboard(combined)
+    }
+
+    @objc private func handleOpenPreferences() {
+        hideTooltip()
+        onOpenPreferences?()
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(trimmed, forType: .string)
+    }
+
+    private static func makeIconButton(
+        symbolName: String,
+        toolTip: String,
+        target: AnyObject?,
+        action: Selector
+    ) -> HoverableIconButton {
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
+        image?.isTemplate = true
+        let button = HoverableIconButton(image: image ?? NSImage(), target: target, action: action)
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyDown
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = nil
+        button.tooltipText = toolTip
+        button.setAccessibilityLabel(toolTip)
+        button.focusRingType = .none
+        return button
     }
 
     private func ensureMonitors() {}

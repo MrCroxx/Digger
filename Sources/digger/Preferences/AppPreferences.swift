@@ -9,6 +9,7 @@ enum AppPreferences {
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
+    static let popupTooltipDelayMsKey = "PopupTooltipDelayMs"
     static let translationStreamingKey = "TranslationStreaming"
     static let languageKey = "AppLanguage"
     static let translationTargetLanguageKey = "TranslationTargetLanguage"
@@ -18,6 +19,7 @@ enum AppPreferences {
     static let defaultBaselineWindowMs: CGFloat = 120
     static let defaultPopupMaxWidth: CGFloat = 520
     static let defaultPopupMaxHeight: CGFloat = 360
+    static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
@@ -81,6 +83,17 @@ enum AppPreferences {
 
     static func setPopupMaxHeight(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 120)), forKey: popupMaxHeightKey)
+    }
+
+    static func popupTooltipDelayMs() -> CGFloat {
+        if UserDefaults.standard.object(forKey: popupTooltipDelayMsKey) == nil {
+            return defaultPopupTooltipDelayMs
+        }
+        return CGFloat(UserDefaults.standard.double(forKey: popupTooltipDelayMsKey))
+    }
+
+    static func setPopupTooltipDelayMs(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 0)), forKey: popupTooltipDelayMsKey)
     }
 
     static func translationStreamingEnabled() -> Bool {

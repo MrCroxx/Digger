@@ -54,9 +54,13 @@ enum UIStrings {
         case translationLoadingPrefix
         case popupOriginalTitle
         case popupTranslationTitle
+        case popupCopyTranslation
+        case popupCopyAll
+        case popupOpenPreferences
         case preferencesTitle
         case preferencesDescription
         case preferencesPopupFontSizeLabel
+        case preferencesPopupTooltipDelayLabel
         case preferencesLanguageLabel
         case preferencesTargetLanguageLabel
         case preferencesStreamingLabel
@@ -83,12 +87,16 @@ enum UIStrings {
     enum Popup {
         static var originalTitle: String { value(.popupOriginalTitle) }
         static var translationTitle: String { value(.popupTranslationTitle) }
+        static var copyTranslation: String { value(.popupCopyTranslation) }
+        static var copyAll: String { value(.popupCopyAll) }
+        static var openPreferences: String { value(.popupOpenPreferences) }
     }
 
     enum Preferences {
         static var title: String { value(.preferencesTitle) }
         static var description: String { value(.preferencesDescription) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
+        static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
@@ -124,9 +132,13 @@ enum UIStrings {
             .translationLoadingPrefix: "Translating",
             .popupOriginalTitle: "Original",
             .popupTranslationTitle: "Translation",
+            .popupCopyTranslation: "Copy Translation",
+            .popupCopyAll: "Copy Original + Translation",
+            .popupOpenPreferences: "Open Preferences",
             .preferencesTitle: "Preferences",
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
+            .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
             .preferencesLanguageLabel: "Language",
             .preferencesTargetLanguageLabel: "Target Language",
             .preferencesStreamingLabel: "Stream Translation",
@@ -149,9 +161,13 @@ enum UIStrings {
             .translationLoadingPrefix: "翻译中",
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "译文",
+            .popupCopyTranslation: "复制译文",
+            .popupCopyAll: "复制原文和译文",
+            .popupOpenPreferences: "打开偏好设置",
             .preferencesTitle: "偏好设置",
             .preferencesDescription: "设置会自动保存。",
             .preferencesPopupFontSizeLabel: "弹窗字号",
+            .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
             .preferencesLanguageLabel: "语言",
             .preferencesTargetLanguageLabel: "目标语言",
             .preferencesStreamingLabel: "流式译文",
@@ -174,9 +190,13 @@ enum UIStrings {
             .translationLoadingPrefix: "翻訳中",
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "翻訳",
+            .popupCopyTranslation: "翻訳をコピー",
+            .popupCopyAll: "原文と翻訳をコピー",
+            .popupOpenPreferences: "環境設定を開く",
             .preferencesTitle: "環境設定",
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
+            .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
             .preferencesLanguageLabel: "言語",
             .preferencesTargetLanguageLabel: "翻訳先",
             .preferencesStreamingLabel: "ストリーミング翻訳",
