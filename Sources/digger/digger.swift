@@ -177,7 +177,11 @@ private final class ForceClickSelectionHandler {
             return
         }
         let translator = self.translator
-        Task { [trimmedText, location] in
+        let requestID = UUID()
+        Task { @MainActor in
+            forceClickSelectionPopup.showLoading(original: trimmedText, near: location, requestID: requestID)
+        }
+        Task { [trimmedText, location, requestID] in
             let translation: String
             if let translator {
                 do {
@@ -191,7 +195,7 @@ private final class ForceClickSelectionHandler {
             }
             print("译文: \(translation)")
             await MainActor.run {
-                forceClickSelectionPopup.show(original: trimmedText, translation: translation, near: location)
+                forceClickSelectionPopup.updateTranslation(translation, for: requestID, near: location)
             }
         }
     }
@@ -414,8 +418,12 @@ private final class ForceClickSelectionPopup {
     private let originalTextField: NSTextField
     private let translationTitleField: NSTextField
     private let translationTextField: NSTextField
+    private let loadingTextField: NSTextField
     private let dividerView: NSView
     private let contentView: DraggableContentView
+    private var loadingTimer: Timer?
+    private var loadingDotCount = 0
+    private var currentRequestID: UUID?
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -455,6 +463,14 @@ private final class ForceClickSelectionPopup {
         translationTextField.cell?.wraps = true
         translationTextField.cell?.usesSingleLineMode = false
 
+        loadingTextField = NSTextField(labelWithString: "")
+        loadingTextField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        loadingTextField.textColor = .secondaryLabelColor
+        loadingTextField.backgroundColor = .clear
+        loadingTextField.isEditable = false
+        loadingTextField.isSelectable = false
+        loadingTextField.lineBreakMode = .byTruncatingTail
+
         dividerView = NSView()
         dividerView.wantsLayer = true
         dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
@@ -468,6 +484,7 @@ private final class ForceClickSelectionPopup {
         contentView.addSubview(dividerView)
         contentView.addSubview(translationTitleField)
         contentView.addSubview(translationTextField)
+        contentView.addSubview(loadingTextField)
 
         window = PopupWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -488,6 +505,37 @@ private final class ForceClickSelectionPopup {
         }
     }
 
+    func showLoading(original: String, near location: CGPoint, requestID: UUID) {
+        let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOriginal.isEmpty else {
+            return
+        }
+
+        currentRequestID = requestID
+        originalTextField.stringValue = trimmedOriginal
+        translationTextField.stringValue = ""
+        startLoadingAnimation()
+        let contentSize = layoutContent(showTranslation: false, showLoading: true)
+        setWindowFrame(contentSize: contentSize, near: location, animated: false)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func updateTranslation(_ translation: String, for requestID: UUID, near location: CGPoint) {
+        guard currentRequestID == requestID else {
+            return
+        }
+        stopLoadingAnimation()
+        let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        translationTextField.stringValue = trimmedTranslation
+        let contentSize = layoutContent(showTranslation: true, showLoading: false)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            setWindowFrame(contentSize: contentSize, near: location, animated: true)
+        }
+    }
+
     func show(original: String, translation: String, near location: CGPoint) {
         let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -495,28 +543,28 @@ private final class ForceClickSelectionPopup {
             return
         }
 
+        currentRequestID = UUID()
+        stopLoadingAnimation()
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = trimmedTranslation
-        layoutContent()
-
-        let offset = CGPoint(x: 12, y: -12)
-        let frame = window.frame
-        let origin = CGPoint(
-            x: location.x + offset.x,
-            y: location.y - frame.height + offset.y
-        )
-        let clampedOrigin = clampOrigin(origin, for: frame.size, near: location)
-        window.setFrameOrigin(clampedOrigin)
+        let contentSize = layoutContent(showTranslation: true, showLoading: false)
+        setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func layoutContent() {
+    private func layoutContent(showTranslation: Bool, showLoading: Bool) -> CGSize {
+        dividerView.isHidden = !showTranslation
+        translationTitleField.isHidden = !showTranslation
+        translationTextField.isHidden = !showTranslation
+        loadingTextField.isHidden = !showLoading
+
         let padding = CGSize(width: 10, height: 8)
         let maxWidth: CGFloat = 320
         let titleTextSpacing: CGFloat = 2
         let dividerHeight: CGFloat = 1
         let dividerSpacing: CGFloat = 6
+        let loadingSpacing: CGFloat = 6
 
         func textSize(for textField: NSTextField, maxWidth: CGFloat) -> CGSize {
             let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -533,16 +581,16 @@ private final class ForceClickSelectionPopup {
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
         let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
         let translationTitleSize = (translationTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
-
         let textMaxWidth = maxWidth - padding.width * 2
         let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
         let translationTextSize = textSize(for: translationTextField, maxWidth: textMaxWidth)
+        let loadingTextSize = textSize(for: loadingTextField, maxWidth: textMaxWidth)
 
         let contentTextWidth = max(
             originalTitleSize.width,
-            translationTitleSize.width,
             originalTextSize.width,
-            translationTextSize.width
+            showTranslation ? max(translationTitleSize.width, translationTextSize.width) : 0,
+            showLoading ? loadingTextSize.width : 0
         )
         let contentWidth = min(maxWidth, max(contentTextWidth + padding.width * 2, 120))
 
@@ -550,16 +598,20 @@ private final class ForceClickSelectionPopup {
         let translationTitleHeight = ceil(translationTitleSize.height)
         let originalTextHeight = max(ceil(originalTextSize.height), 16)
         let translationTextHeight = max(ceil(translationTextSize.height), 16)
+        let loadingTextHeight = max(ceil(loadingTextSize.height), 14)
         let contentHeight = padding.height * 2 + 4
             + originalTitleHeight
             + titleTextSpacing
             + originalTextHeight
-            + dividerSpacing
-            + dividerHeight
-            + dividerSpacing
-            + translationTitleHeight
-            + titleTextSpacing
-            + translationTextHeight
+            + (showLoading ? (loadingSpacing + loadingTextHeight) : 0)
+            + (showTranslation
+                ? (dividerSpacing
+                    + dividerHeight
+                    + dividerSpacing
+                    + translationTitleHeight
+                    + titleTextSpacing
+                    + translationTextHeight)
+                : 0)
 
         let titleX = padding.width
         let textX = padding.width
@@ -583,34 +635,88 @@ private final class ForceClickSelectionPopup {
             width: availableWidth,
             height: originalTextHeight
         )
-        y -= dividerSpacing + dividerHeight
+        if showLoading {
+            y -= loadingSpacing + loadingTextHeight
+            loadingTextField.frame = NSRect(
+                x: textX,
+                y: y,
+                width: availableWidth,
+                height: loadingTextHeight
+            )
+        }
 
-        dividerView.frame = NSRect(
-            x: padding.width,
-            y: y,
-            width: availableWidth,
-            height: dividerHeight
-        )
-        y -= dividerSpacing + translationTitleHeight
+        if showTranslation {
+            y -= dividerSpacing + dividerHeight
 
-        translationTitleField.frame = NSRect(
-            x: titleX,
-            y: y,
-            width: availableWidth,
-            height: translationTitleHeight
-        )
-        y -= titleTextSpacing + translationTextHeight
+            dividerView.frame = NSRect(
+                x: padding.width,
+                y: y,
+                width: availableWidth,
+                height: dividerHeight
+            )
+            y -= dividerSpacing + translationTitleHeight
 
-        translationTextField.frame = NSRect(
-            x: textX,
-            y: y,
-            width: availableWidth,
-            height: translationTextHeight
-        )
+            translationTitleField.frame = NSRect(
+                x: titleX,
+                y: y,
+                width: availableWidth,
+                height: translationTitleHeight
+            )
+            y -= titleTextSpacing + translationTextHeight
+
+            translationTextField.frame = NSRect(
+                x: textX,
+                y: y,
+                width: availableWidth,
+                height: translationTextHeight
+            )
+        }
 
         let contentSize = CGSize(width: contentWidth, height: contentHeight)
-        window.setContentSize(contentSize)
         contentView.frame = NSRect(origin: .zero, size: contentSize)
+        return contentSize
+    }
+
+    private func setWindowFrame(contentSize: CGSize, near location: CGPoint, animated: Bool) {
+        let offset = CGPoint(x: 12, y: -12)
+        let origin = CGPoint(
+            x: location.x + offset.x,
+            y: location.y - contentSize.height + offset.y
+        )
+        let clampedOrigin = clampOrigin(origin, for: contentSize, near: location)
+        let frame = NSRect(origin: clampedOrigin, size: contentSize)
+        if animated {
+            window.animator().setFrame(frame, display: true)
+        } else {
+            window.setFrame(frame, display: true)
+        }
+    }
+
+    private func startLoadingAnimation() {
+        stopLoadingAnimation()
+        loadingDotCount = 0
+        updateLoadingText()
+        loadingTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tickLoadingAnimation()
+            }
+        }
+    }
+
+    private func stopLoadingAnimation() {
+        loadingTimer?.invalidate()
+        loadingTimer = nil
+        loadingDotCount = 0
+    }
+
+    private func tickLoadingAnimation() {
+        loadingDotCount = (loadingDotCount + 1) % 4
+        updateLoadingText()
+    }
+
+    private func updateLoadingText() {
+        let dots = String(repeating: "·", count: loadingDotCount)
+        loadingTextField.stringValue = "译文翻译中" + dots
     }
 
     private func ensureMonitors() {}
@@ -652,6 +758,7 @@ private final class ForceClickSelectionPopup {
         guard window.isVisible else {
             return
         }
+        stopLoadingAnimation()
         window.orderOut(nil)
     }
 
@@ -660,6 +767,7 @@ private final class ForceClickSelectionPopup {
             return
         }
         if !isLocationInsideWindow(location) {
+            stopLoadingAnimation()
             window.orderOut(nil)
         }
     }
