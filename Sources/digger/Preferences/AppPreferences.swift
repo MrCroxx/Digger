@@ -13,6 +13,8 @@ enum AppPreferences {
     static let translationStreamingKey = "TranslationStreaming"
     static let languageKey = "AppLanguage"
     static let translationTargetLanguageKey = "TranslationTargetLanguage"
+    static let customFunctionsKey = "CustomFunctions"
+    static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
 
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 2.0
@@ -123,5 +125,38 @@ enum AppPreferences {
 
     static func setTranslationTargetLanguage(_ language: TranslationTargetLanguage) {
         UserDefaults.standard.set(language.rawValue, forKey: translationTargetLanguageKey)
+    }
+
+    static func customFunctions() -> [CustomFunction] {
+        guard let data = UserDefaults.standard.data(forKey: customFunctionsKey) else {
+            return []
+        }
+        do {
+            return try JSONDecoder().decode([CustomFunction].self, from: data)
+        } catch {
+            UserDefaults.standard.removeObject(forKey: customFunctionsKey)
+            return []
+        }
+    }
+
+    static func setCustomFunctions(_ functions: [CustomFunction]) {
+        do {
+            let data = try JSONEncoder().encode(functions)
+            UserDefaults.standard.set(data, forKey: customFunctionsKey)
+        } catch {
+            return
+        }
+    }
+
+    static func clearCustomFunctions() {
+        UserDefaults.standard.removeObject(forKey: customFunctionsKey)
+    }
+
+    static func clearCustomFunctionsOnceIfNeeded() {
+        if UserDefaults.standard.bool(forKey: customFunctionsClearedKey) {
+            return
+        }
+        clearCustomFunctions()
+        UserDefaults.standard.set(true, forKey: customFunctionsClearedKey)
     }
 }

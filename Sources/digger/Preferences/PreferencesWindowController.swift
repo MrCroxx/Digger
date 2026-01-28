@@ -23,22 +23,45 @@ final class PreferencesWindowController: NSObject {
     private let popupFontSizeSlider: NSSlider
     private let popupFontSizeValueField: NSTextField
     private let streamingToggle: NSButton
+    private let customFunctionsTitleField: NSTextField
+    private let customFunctionsDescriptionField: NSTextField
+    private let addFunctionButton: NSButton
+    private let customFunctionsStack: NSStackView
+    private let contentStackView: NSStackView
+    private let scrollView: NSScrollView
+    private var customFunctionsStackWidthConstraint: NSLayoutConstraint?
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
+    private let onCustomFunctionsChange: () -> Void
     nonisolated(unsafe) private var mouseDownMonitor: Any?
+    private var functionFieldBindings: [ObjectIdentifier: FunctionFieldBinding] = [:]
+    private var removeButtonBindings: [ObjectIdentifier: UUID] = [:]
+
+    private struct FunctionFieldBinding {
+        let id: UUID
+        let kind: FunctionFieldKind
+    }
+
+    private enum FunctionFieldKind {
+        case title
+        case prompt
+    }
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
         onPopupLayoutChange: @escaping () -> Void,
         onLanguageChange: @escaping () -> Void,
-        onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void
+        onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void,
+        onCustomFunctionsChange: @escaping () -> Void
     ) {
+        AppPreferences.clearCustomFunctionsOnceIfNeeded()
         self.onPopupFontSizeChange = onPopupFontSizeChange
         self.onPopupLayoutChange = onPopupLayoutChange
         self.onLanguageChange = onLanguageChange
         self.onForceClickSettingsChange = onForceClickSettingsChange
+        self.onCustomFunctionsChange = onCustomFunctionsChange
         NSApplication.shared.activate(ignoringOtherApps: true)
         let contentView = NSView()
         contentView.wantsLayer = true
@@ -130,40 +153,86 @@ final class PreferencesWindowController: NSObject {
         streamingToggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
         streamingToggle.font = NSFont.systemFont(ofSize: 12, weight: .regular)
 
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .leading
-        stackView.spacing = 10
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        customFunctionsTitleField = NSTextField(labelWithString: UIStrings.Preferences.customFunctionsTitle)
+        customFunctionsTitleField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        customFunctionsTitleField.textColor = .labelColor
+        customFunctionsDescriptionField = NSTextField(wrappingLabelWithString: UIStrings.Preferences.customFunctionsDescription)
+        customFunctionsDescriptionField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        customFunctionsDescriptionField.textColor = .secondaryLabelColor
+        addFunctionButton = NSButton(title: UIStrings.Preferences.addFunction, target: nil, action: nil)
+        addFunctionButton.bezelStyle = .rounded
+        addFunctionButton.controlSize = .small
+        customFunctionsStack = NSStackView()
+        customFunctionsStack.orientation = .vertical
+        customFunctionsStack.alignment = .leading
+        customFunctionsStack.spacing = 10
+        customFunctionsStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        customFunctionsStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        customFunctionsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        stackView.addArrangedSubview(titleField)
-        stackView.addArrangedSubview(descriptionField)
-        stackView.addArrangedSubview(Self.makeSliderRow(
+        contentStackView = NSStackView()
+        contentStackView.orientation = .vertical
+        contentStackView.alignment = .leading
+        contentStackView.spacing = 10
+        contentStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+
+        let customFunctionsHeader = NSStackView(views: [customFunctionsTitleField, NSView(), addFunctionButton])
+        customFunctionsHeader.orientation = .horizontal
+        customFunctionsHeader.alignment = .centerY
+        customFunctionsHeader.spacing = 8
+        customFunctionsTitleField.setContentHuggingPriority(.required, for: .horizontal)
+        addFunctionButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        contentStackView.addArrangedSubview(titleField)
+        contentStackView.addArrangedSubview(descriptionField)
+        contentStackView.addArrangedSubview(Self.makeSliderRow(
             labelField: popupFontSizeLabelField,
             slider: popupFontSizeSlider,
             valueField: popupFontSizeValueField
         ))
-        stackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
-        stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
-        stackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
-        stackView.addArrangedSubview(streamingToggle)
-        stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_HEIGHT", field: popupMaxHeightField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
-        stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
+        contentStackView.addArrangedSubview(Self.makeRow(labelField: popupTooltipDelayLabelField, field: popupTooltipDelayField))
+        contentStackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
+        contentStackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
+        contentStackView.addArrangedSubview(streamingToggle)
+        contentStackView.addArrangedSubview(customFunctionsHeader)
+        contentStackView.addArrangedSubview(customFunctionsDescriptionField)
+        contentStackView.addArrangedSubview(customFunctionsStack)
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_HEIGHT", field: popupMaxHeightField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
+        contentStackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
 
-        contentView.addSubview(stackView)
+        scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = contentStackView
+
+        contentView.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            contentStackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            contentStackView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            contentStackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            contentStackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
+            contentStackView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
         ])
+
+        let widthConstraint = customFunctionsStack.widthAnchor.constraint(equalTo: contentStackView.widthAnchor)
+        widthConstraint.priority = .defaultHigh
+        widthConstraint.isActive = true
+        customFunctionsStackWidthConstraint = widthConstraint
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
@@ -177,8 +246,6 @@ final class PreferencesWindowController: NSObject {
         window.contentView = contentView
 
         super.init()
-        let backgroundClickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(handleBackgroundClick(_:)))
-        contentView.addGestureRecognizer(backgroundClickRecognizer)
         popupFontSizeSlider.target = self
         popupFontSizeSlider.action = #selector(handleFontSizeChange(_:))
         apiKeyField.target = self
@@ -203,6 +270,8 @@ final class PreferencesWindowController: NSObject {
         targetLanguagePopUp.action = #selector(handleTargetLanguageChange(_:))
         streamingToggle.target = self
         streamingToggle.action = #selector(handleStreamingToggle(_:))
+        addFunctionButton.target = self
+        addFunctionButton.action = #selector(handleAddFunction(_:))
 
         apiKeyField.delegate = self
         endpointField.delegate = self
@@ -267,7 +336,11 @@ final class PreferencesWindowController: NSObject {
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
         targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
         streamingToggle.title = UIStrings.Preferences.streamingLabel
+        customFunctionsTitleField.stringValue = UIStrings.Preferences.customFunctionsTitle
+        customFunctionsDescriptionField.stringValue = UIStrings.Preferences.customFunctionsDescription
+        addFunctionButton.title = UIStrings.Preferences.addFunction
         window.title = UIStrings.Preferences.title
+        reloadCustomFunctions()
     }
 
     private static func makeValueField() -> NSTextField {
@@ -336,6 +409,135 @@ final class PreferencesWindowController: NSObject {
         row.alignment = .centerY
         row.spacing = 12
         return row
+    }
+
+    private func reloadCustomFunctions(_ functionsOverride: [CustomFunction]? = nil) {
+        customFunctionsStack.arrangedSubviews.forEach {
+            customFunctionsStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        functionFieldBindings.removeAll()
+        removeButtonBindings.removeAll()
+
+        let functions = functionsOverride ?? AppPreferences.customFunctions()
+        customFunctionsStack.isHidden = functions.isEmpty
+        guard !functions.isEmpty else {
+            return
+        }
+
+        for function in functions {
+            let row = makeCustomFunctionRow(function)
+            customFunctionsStack.addArrangedSubview(row)
+        }
+        customFunctionsStack.invalidateIntrinsicContentSize()
+        contentStackView.invalidateIntrinsicContentSize()
+        customFunctionsStack.needsLayout = true
+        customFunctionsStack.layoutSubtreeIfNeeded()
+        customFunctionsStack.superview?.needsLayout = true
+        customFunctionsStack.superview?.layoutSubtreeIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    private func makeCustomFunctionRow(_ function: CustomFunction) -> NSStackView {
+        let labelWidth: CGFloat = 56
+        let titleLabel = NSTextField(labelWithString: UIStrings.Preferences.functionTitleLabel)
+        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
+        titleLabel.widthAnchor.constraint(equalToConstant: labelWidth).isActive = true
+
+        let promptLabel = NSTextField(labelWithString: UIStrings.Preferences.functionPromptLabel)
+        promptLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        promptLabel.textColor = .secondaryLabelColor
+        promptLabel.setContentHuggingPriority(.required, for: .horizontal)
+        promptLabel.widthAnchor.constraint(equalToConstant: labelWidth).isActive = true
+
+        let titleField = NSTextField()
+        titleField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        titleField.isEditable = true
+        titleField.isSelectable = true
+        titleField.placeholderString = UIStrings.Preferences.functionTitlePlaceholder
+        titleField.stringValue = function.title
+        titleField.delegate = self
+        titleField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        functionFieldBindings[ObjectIdentifier(titleField)] = FunctionFieldBinding(id: function.id, kind: .title)
+
+        let promptField = NSTextField()
+        promptField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        promptField.isEditable = true
+        promptField.isSelectable = true
+        promptField.placeholderString = UIStrings.Preferences.functionPromptPlaceholder
+        promptField.stringValue = function.prompt
+        promptField.delegate = self
+        promptField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        promptField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        functionFieldBindings[ObjectIdentifier(promptField)] = FunctionFieldBinding(id: function.id, kind: .prompt)
+
+        let removeButton = NSButton(title: UIStrings.Preferences.removeFunction, target: self, action: #selector(handleRemoveFunction(_:)))
+        removeButton.bezelStyle = .rounded
+        removeButton.controlSize = .small
+        removeButton.setContentHuggingPriority(.required, for: .horizontal)
+        removeButtonBindings[ObjectIdentifier(removeButton)] = function.id
+
+        let titleRow = NSStackView(views: [titleLabel, titleField])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 8
+
+        let promptRow = NSStackView(views: [promptLabel, promptField])
+        promptRow.orientation = .horizontal
+        promptRow.alignment = .centerY
+        promptRow.spacing = 8
+
+        let removeRow = NSStackView(views: [NSView(), removeButton])
+        removeRow.orientation = .horizontal
+        removeRow.alignment = .centerY
+
+        let row = NSStackView(views: [titleRow, promptRow, removeRow])
+        row.orientation = .vertical
+        row.alignment = .leading
+        row.spacing = 6
+        row.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return row
+    }
+
+    @objc private func handleAddFunction(_ sender: Any?) {
+        print("[Preferences] Add Function clicked")
+        var functions = AppPreferences.customFunctions()
+        let newFunction = CustomFunction(title: UIStrings.Preferences.functionDefaultTitle, prompt: "")
+        functions.append(newFunction)
+        AppPreferences.setCustomFunctions(functions)
+        reloadCustomFunctions(functions)
+        onCustomFunctionsChange()
+    }
+
+    @objc private func handleRemoveFunction(_ sender: Any?) {
+        guard let button = sender as? NSButton,
+              let functionID = removeButtonBindings[ObjectIdentifier(button)] else {
+            return
+        }
+        var functions = AppPreferences.customFunctions()
+        functions.removeAll { $0.id == functionID }
+        AppPreferences.setCustomFunctions(functions)
+        reloadCustomFunctions(functions)
+        onCustomFunctionsChange()
+    }
+
+    private func updateCustomFunction(id: UUID, kind: FunctionFieldKind, value: String) {
+        var functions = AppPreferences.customFunctions()
+        guard let index = functions.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        switch kind {
+        case .title:
+            functions[index].title = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .prompt:
+            functions[index].prompt = value
+        }
+        AppPreferences.setCustomFunctions(functions)
+        onCustomFunctionsChange()
     }
 
     @objc private func handleFontSizeChange(_ sender: NSSlider) {
@@ -496,6 +698,13 @@ extension PreferencesWindowController: NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else {
+            return
+        }
+        if let binding = functionFieldBindings[ObjectIdentifier(field)] {
+            updateCustomFunction(id: binding.id, kind: binding.kind, value: field.stringValue)
+            if shouldResignFocusOnEndEditing(obj) {
+                window.makeFirstResponder(nil)
+            }
             return
         }
         switch field {
