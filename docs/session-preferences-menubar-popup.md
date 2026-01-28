@@ -15,7 +15,7 @@ The main goals were:
 - Allow popup font size changes without breaking popup layout.
 - Improve force-click behavior (prevent double popups and selection loss).
 
-All changes are contained in `Sources/digger/digger.swift` and a new document in `docs/`.
+All changes are now split across modules under `Sources/digger/`.
 
 ## Menu Bar + Preferences Entry
 
@@ -138,15 +138,22 @@ This prevents event suppression from breaking input in the Preferences window.
 
 ## Files and Key Entry Points
 
-- `Sources/digger/digger.swift`
-  - `MenuBarController`
-  - `PreferencesWindowController`
-  - `AppPreferences`
-  - `PopupFontPreferences`
-  - `ForceClickMonitor.updateSettings(...)`
-  - `OpenAITranslator` (re-instantiated per request)
-  - `ForceClickSelectionPopup.applyPopupTextSize(_:)`
+- `Sources/digger/App/Digger.swift`
   - `Digger.buildMainMenu()`
+- `Sources/digger/UI/MenuBarController.swift`
+  - `MenuBarController`
+- `Sources/digger/Preferences/PreferencesWindowController.swift`
+  - `PreferencesWindowController`
+- `Sources/digger/Preferences/AppPreferences.swift`
+  - `AppPreferences`
+- `Sources/digger/Preferences/PopupFontPreferences.swift`
+  - `PopupFontPreferences`
+- `Sources/digger/Core/ForceClickMonitor.swift`
+  - `ForceClickMonitor.updateSettings(...)`
+- `Sources/digger/Translation/OpenAITranslator.swift`
+  - `OpenAITranslator` (re-instantiated per request)
+- `Sources/digger/UI/ForceClickSelectionPopup.swift`
+  - `ForceClickSelectionPopup.applyPopupTextSize(_:)`
 
 ## Notes / Future Improvements
 
@@ -156,4 +163,3 @@ If desired, you can add:
 - A “Test API Key” button
 - Unit tests for `AppPreferences` value clamping
 - Optional “reset to defaults” button
-
