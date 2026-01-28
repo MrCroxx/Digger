@@ -386,14 +386,14 @@ private final class ForceClickSelectionHandler {
             if let translator = OpenAITranslator() {
                 do {
                     let result = try await translator.translate(trimmedText)
-                    translation = result.isEmpty ? "翻译结果为空" : result
+                    translation = result.isEmpty ? UIStrings.Translation.emptyResult : result
                 } catch {
-                    translation = "翻译失败"
+                    translation = UIStrings.Translation.failed
                 }
             } else {
-                translation = "未检测到 OPENAI_API_KEY"
+                translation = UIStrings.Translation.missingApiKey
             }
-            print("译文: \(translation)")
+            print("\(UIStrings.Translation.printPrefix) \(translation)")
             await MainActor.run {
                 forceClickSelectionPopup.updateTranslation(translation, for: requestID, near: location)
             }
@@ -612,7 +612,17 @@ private final class DraggableContentView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        self
+        super.hitTest(point)
+    }
+}
+
+private final class DraggableScrollView: NSScrollView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
     }
 }
 
@@ -626,6 +636,8 @@ private final class ForceClickSelectionPopup {
     private let loadingTextField: NSTextField
     private let dividerView: NSView
     private let contentView: DraggableContentView
+    private let scrollView: DraggableScrollView
+    private let documentView: NSView
     private var loadingTimer: Timer?
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
@@ -638,7 +650,7 @@ private final class ForceClickSelectionPopup {
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
-        originalTitleField = NSTextField(labelWithString: "原文")
+        originalTitleField = NSTextField(labelWithString: "")
         originalTitleField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
         originalTitleField.textColor = .secondaryLabelColor
         originalTitleField.backgroundColor = .clear
@@ -652,11 +664,11 @@ private final class ForceClickSelectionPopup {
         originalTextField.isEditable = false
         originalTextField.isSelectable = false
         originalTextField.lineBreakMode = .byWordWrapping
-        originalTextField.maximumNumberOfLines = 6
+        originalTextField.maximumNumberOfLines = 0
         originalTextField.cell?.wraps = true
         originalTextField.cell?.usesSingleLineMode = false
 
-        translationTitleField = NSTextField(labelWithString: "译文")
+        translationTitleField = NSTextField(labelWithString: "")
         translationTitleField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
         translationTitleField.textColor = .secondaryLabelColor
         translationTitleField.backgroundColor = .clear
@@ -670,7 +682,7 @@ private final class ForceClickSelectionPopup {
         translationTextField.isEditable = false
         translationTextField.isSelectable = false
         translationTextField.lineBreakMode = .byWordWrapping
-        translationTextField.maximumNumberOfLines = 6
+        translationTextField.maximumNumberOfLines = 0
         translationTextField.cell?.wraps = true
         translationTextField.cell?.usesSingleLineMode = false
 
@@ -690,12 +702,23 @@ private final class ForceClickSelectionPopup {
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
-        contentView.addSubview(originalTitleField)
-        contentView.addSubview(originalTextField)
-        contentView.addSubview(dividerView)
-        contentView.addSubview(translationTitleField)
-        contentView.addSubview(translationTextField)
-        contentView.addSubview(loadingTextField)
+        documentView = NSView()
+        documentView.addSubview(originalTitleField)
+        documentView.addSubview(originalTextField)
+        documentView.addSubview(dividerView)
+        documentView.addSubview(translationTitleField)
+        documentView.addSubview(translationTextField)
+        documentView.addSubview(loadingTextField)
+
+        scrollView = DraggableScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.borderType = .noBorder
+        scrollView.documentView = documentView
+        contentView.addSubview(scrollView)
 
         window = PopupWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -716,6 +739,7 @@ private final class ForceClickSelectionPopup {
         }
 
         applyPopupTextSize(PopupFontPreferences.load())
+        applyStrings()
     }
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID) {
@@ -731,7 +755,7 @@ private final class ForceClickSelectionPopup {
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = ""
         startLoadingAnimation()
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -747,7 +771,7 @@ private final class ForceClickSelectionPopup {
         isShowingTranslation = true
         isShowingLoading = false
         translationTextField.stringValue = trimmedTranslation
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -769,7 +793,7 @@ private final class ForceClickSelectionPopup {
         isShowingLoading = false
         originalTextField.stringValue = trimmedOriginal
         translationTextField.stringValue = trimmedTranslation
-        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -785,23 +809,48 @@ private final class ForceClickSelectionPopup {
         loadingTextField.font = NSFont.systemFont(ofSize: baseLoadingSize * scale, weight: .regular)
 
         if window.isVisible, let location = lastAnchorLocation {
-            let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading)
+            let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
             setWindowFrame(contentSize: contentSize, near: location, animated: false)
         }
     }
 
-    private func layoutContent(showTranslation: Bool, showLoading: Bool) -> CGSize {
+    func applyStrings() {
+        originalTitleField.stringValue = UIStrings.Popup.originalTitle
+        translationTitleField.stringValue = UIStrings.Popup.translationTitle
+        if isShowingLoading {
+            updateLoadingText()
+        }
+    }
+
+    func refreshLayout() {
+        guard window.isVisible, let location = lastAnchorLocation else {
+            return
+        }
+        let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
+        setWindowFrame(contentSize: contentSize, near: location, animated: false)
+    }
+
+    private func layoutContent(showTranslation: Bool, showLoading: Bool, near location: CGPoint?) -> CGSize {
         dividerView.isHidden = !showTranslation
         translationTitleField.isHidden = !showTranslation
         translationTextField.isHidden = !showTranslation
         loadingTextField.isHidden = !showLoading
 
         let padding = CGSize(width: 10, height: 8)
-        let maxWidth: CGFloat = 320
+        let minWidth: CGFloat = 120
+        let baseMaxWidth: CGFloat = 320
+        let preferredMaxWidth = AppPreferences.popupMaxWidth()
+        let preferredMaxHeight = AppPreferences.popupMaxHeight()
+        let screen = location.flatMap { screenContaining($0) } ?? NSScreen.main ?? NSScreen.screens.first
+        let visibleFrame = screen?.visibleFrame ?? .zero
+        let maxWidthLimit = max(minWidth, min(preferredMaxWidth, visibleFrame.width - 24))
+        let maxHeightLimit = max(120, min(preferredMaxHeight, visibleFrame.height - 24))
         let titleTextSpacing: CGFloat = 2
         let dividerHeight: CGFloat = 1
         let dividerSpacing: CGFloat = 6
         let loadingSpacing: CGFloat = 6
+        let scrollerClearance: CGFloat = 12
+        let paddingLeft = padding.width
 
         func textSize(for textField: NSTextField, maxWidth: CGFloat) -> CGSize {
             let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -816,69 +865,156 @@ private final class ForceClickSelectionPopup {
 
         let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
-        let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
-        let translationTitleSize = (translationTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
-        let textMaxWidth = maxWidth - padding.width * 2
-        let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
-        let translationTextSize = textSize(for: translationTextField, maxWidth: textMaxWidth)
-        let loadingTextSize = textSize(for: loadingTextField, maxWidth: textMaxWidth)
 
-        let contentTextWidth = max(
-            originalTitleSize.width,
-            originalTextSize.width,
-            showTranslation ? max(translationTitleSize.width, translationTextSize.width) : 0,
-            showLoading ? loadingTextSize.width : 0
-        )
-        let contentWidth = min(maxWidth, max(contentTextWidth + padding.width * 2, 120))
+        func measureLayout(maxWidth: CGFloat, paddingRight: CGFloat) -> (contentWidth: CGFloat, contentHeight: CGFloat, sizes: (CGSize, CGSize, CGSize, CGSize, CGSize)) {
+            let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
+            let translationTitleSize = (translationTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
+            let textMaxWidth = maxWidth - paddingLeft - paddingRight
+            let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
+            let translationTextSize = textSize(for: translationTextField, maxWidth: textMaxWidth)
+            let loadingTextSize = textSize(for: loadingTextField, maxWidth: textMaxWidth)
 
-        let originalTitleHeight = ceil(originalTitleSize.height)
-        let translationTitleHeight = ceil(translationTitleSize.height)
-        let originalTextHeight = max(ceil(originalTextSize.height), 16)
-        let translationTextHeight = max(ceil(translationTextSize.height), 16)
-        let loadingTextHeight = max(ceil(loadingTextSize.height), 14)
-        let contentHeight = padding.height * 2 + 4
-            + originalTitleHeight
-            + titleTextSpacing
-            + originalTextHeight
-            + (showLoading ? (loadingSpacing + loadingTextHeight) : 0)
-            + (showTranslation
-                ? (dividerSpacing
-                    + dividerHeight
-                    + dividerSpacing
-                    + translationTitleHeight
-                    + titleTextSpacing
-                    + translationTextHeight)
-                : 0)
+            let contentTextWidth = max(
+                originalTitleSize.width,
+                originalTextSize.width,
+                showTranslation ? max(translationTitleSize.width, translationTextSize.width) : 0,
+                showLoading ? loadingTextSize.width : 0
+            )
+            let contentWidth = max(minWidth, min(maxWidth, contentTextWidth + paddingLeft + paddingRight))
+            let adjustedTextMaxWidth = contentWidth - paddingLeft - paddingRight
+            if abs(adjustedTextMaxWidth - textMaxWidth) > 0.5 {
+                let adjustedOriginalTextSize = textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
+                let adjustedTranslationTextSize = textSize(for: translationTextField, maxWidth: adjustedTextMaxWidth)
+                let adjustedLoadingTextSize = textSize(for: loadingTextField, maxWidth: adjustedTextMaxWidth)
+                return (
+                    contentWidth,
+                    contentHeight(
+                        originalTitleSize: originalTitleSize,
+                        translationTitleSize: translationTitleSize,
+                        originalTextSize: adjustedOriginalTextSize,
+                        translationTextSize: adjustedTranslationTextSize,
+                        loadingTextSize: adjustedLoadingTextSize,
+                        titleTextSpacing: titleTextSpacing,
+                        dividerHeight: dividerHeight,
+                        dividerSpacing: dividerSpacing,
+                        loadingSpacing: loadingSpacing,
+                        padding: padding,
+                        showTranslation: showTranslation,
+                        showLoading: showLoading
+                    ),
+                    (originalTitleSize, translationTitleSize, adjustedOriginalTextSize, adjustedTranslationTextSize, adjustedLoadingTextSize)
+                )
+            }
 
-        let titleX = padding.width
-        let textX = padding.width
-        let availableWidth = contentWidth - padding.width * 2
+            let height = contentHeight(
+                originalTitleSize: originalTitleSize,
+                translationTitleSize: translationTitleSize,
+                originalTextSize: originalTextSize,
+                translationTextSize: translationTextSize,
+                loadingTextSize: loadingTextSize,
+                titleTextSpacing: titleTextSpacing,
+                dividerHeight: dividerHeight,
+                dividerSpacing: dividerSpacing,
+                loadingSpacing: loadingSpacing,
+                padding: padding,
+                showTranslation: showTranslation,
+                showLoading: showLoading
+            )
+            return (contentWidth, height, (originalTitleSize, translationTitleSize, originalTextSize, translationTextSize, loadingTextSize))
+        }
+
+        func contentHeight(
+            originalTitleSize: CGSize,
+            translationTitleSize: CGSize,
+            originalTextSize: CGSize,
+            translationTextSize: CGSize,
+            loadingTextSize: CGSize,
+            titleTextSpacing: CGFloat,
+            dividerHeight: CGFloat,
+            dividerSpacing: CGFloat,
+            loadingSpacing: CGFloat,
+            padding: CGSize,
+            showTranslation: Bool,
+            showLoading: Bool
+        ) -> CGFloat {
+            let originalTitleHeight = ceil(originalTitleSize.height)
+            let translationTitleHeight = ceil(translationTitleSize.height)
+            let originalTextHeight = max(ceil(originalTextSize.height), 16)
+            let translationTextHeight = max(ceil(translationTextSize.height), 16)
+            let loadingTextHeight = max(ceil(loadingTextSize.height), 14)
+            return padding.height * 2 + 4
+                + originalTitleHeight
+                + titleTextSpacing
+                + originalTextHeight
+                + (showLoading ? (loadingSpacing + loadingTextHeight) : 0)
+                + (showTranslation
+                    ? (dividerSpacing
+                        + dividerHeight
+                        + dividerSpacing
+                        + translationTitleHeight
+                        + titleTextSpacing
+                        + translationTextHeight)
+                    : 0)
+        }
+
+        var paddingRight = padding.width
+        var targetMaxWidth = min(baseMaxWidth, maxWidthLimit)
+        var measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
+        let widthStep: CGFloat = 40
+        while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
+            targetMaxWidth = min(targetMaxWidth + widthStep, maxWidthLimit)
+            measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
+        }
+
+        let needsVerticalScroll = measurement.contentHeight > maxHeightLimit
+        if needsVerticalScroll {
+            paddingRight = padding.width + scrollerClearance
+            targetMaxWidth = min(targetMaxWidth, maxWidthLimit)
+            measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
+            while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
+                targetMaxWidth = min(targetMaxWidth + widthStep, maxWidthLimit)
+                measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
+            }
+        }
+
+        let contentWidth = measurement.contentWidth
+        let originalTitleSize = measurement.sizes.0
+        let translationTitleSize = measurement.sizes.1
+        let originalTextSize = measurement.sizes.2
+        let translationTextSize = measurement.sizes.3
+        let loadingTextSize = measurement.sizes.4
+        let contentHeight = measurement.contentHeight
+        let visibleHeight = min(contentHeight, maxHeightLimit)
+
+        let titleX = paddingLeft
+        let textX = paddingLeft
+        let availableWidth = contentWidth - paddingLeft - paddingRight
         originalTextField.preferredMaxLayoutWidth = availableWidth
         translationTextField.preferredMaxLayoutWidth = availableWidth
 
-        var y = contentHeight - padding.height - originalTitleHeight
+        var y = contentHeight - padding.height - ceil(originalTitleSize.height)
 
         originalTitleField.frame = NSRect(
             x: titleX,
             y: y,
             width: availableWidth,
-            height: originalTitleHeight
+            height: ceil(originalTitleSize.height)
         )
-        y -= titleTextSpacing + originalTextHeight
+        y -= titleTextSpacing + max(ceil(originalTextSize.height), 16)
 
         originalTextField.frame = NSRect(
             x: textX,
             y: y,
             width: availableWidth,
-            height: originalTextHeight
+            height: max(ceil(originalTextSize.height), 16)
         )
         if showLoading {
-            y -= loadingSpacing + loadingTextHeight
+            y -= loadingSpacing + max(ceil(loadingTextSize.height), 14)
             loadingTextField.frame = NSRect(
                 x: textX,
                 y: y,
                 width: availableWidth,
-                height: loadingTextHeight
+                height: max(ceil(loadingTextSize.height), 14)
             )
         }
 
@@ -886,32 +1022,38 @@ private final class ForceClickSelectionPopup {
             y -= dividerSpacing + dividerHeight
 
             dividerView.frame = NSRect(
-                x: padding.width,
+                x: paddingLeft,
                 y: y,
                 width: availableWidth,
                 height: dividerHeight
             )
-            y -= dividerSpacing + translationTitleHeight
+            y -= dividerSpacing + ceil(translationTitleSize.height)
 
             translationTitleField.frame = NSRect(
                 x: titleX,
                 y: y,
                 width: availableWidth,
-                height: translationTitleHeight
+                height: ceil(translationTitleSize.height)
             )
-            y -= titleTextSpacing + translationTextHeight
+            y -= titleTextSpacing + max(ceil(translationTextSize.height), 16)
 
             translationTextField.frame = NSRect(
                 x: textX,
                 y: y,
                 width: availableWidth,
-                height: translationTextHeight
+                height: max(ceil(translationTextSize.height), 16)
             )
         }
 
-        let contentSize = CGSize(width: contentWidth, height: contentHeight)
-        contentView.frame = NSRect(origin: .zero, size: contentSize)
-        return contentSize
+        let documentSize = CGSize(width: contentWidth, height: contentHeight)
+        let visibleSize = CGSize(width: contentWidth, height: visibleHeight)
+        documentView.frame = NSRect(origin: .zero, size: documentSize)
+        contentView.frame = NSRect(origin: .zero, size: visibleSize)
+        scrollView.frame = contentView.bounds
+        scrollView.hasVerticalScroller = needsVerticalScroll
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: max(0, contentHeight - visibleHeight)))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        return visibleSize
     }
 
     private func setWindowFrame(contentSize: CGSize, near location: CGPoint, animated: Bool) {
@@ -953,7 +1095,7 @@ private final class ForceClickSelectionPopup {
 
     private func updateLoadingText() {
         let dots = String(repeating: "·", count: loadingDotCount)
-        loadingTextField.stringValue = "译文翻译中" + dots
+        loadingTextField.stringValue = UIStrings.Translation.loadingPrefix + dots
     }
 
     private func ensureMonitors() {}
@@ -1074,16 +1216,22 @@ private enum PopupFontPreferences {
     }
 }
 
-private enum AppPreferences {
+enum AppPreferences {
     static let apiKeyKey = "OpenAIAPIKey"
     static let endpointKey = "OpenAIEndpoint"
     static let pressureThresholdKey = "ForceClickPressureThreshold"
     static let pressureDeltaKey = "ForceClickPressureDelta"
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
+    static let popupMaxWidthKey = "PopupMaxWidth"
+    static let popupMaxHeightKey = "PopupMaxHeight"
+    static let languageKey = "AppLanguage"
 
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 2.0
     static let defaultBaselineWindowMs: CGFloat = 120
+    static let defaultPopupMaxWidth: CGFloat = 520
+    static let defaultPopupMaxHeight: CGFloat = 360
+    static let defaultLanguage: AppLanguage = .english
 
     static func apiKey() -> String {
         UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
@@ -1127,36 +1275,76 @@ private enum AppPreferences {
     static func setBaselineWindowMs(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 10)), forKey: baselineWindowKey)
     }
+
+    static func popupMaxWidth() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: popupMaxWidthKey)
+        return stored > 0 ? CGFloat(stored) : defaultPopupMaxWidth
+    }
+
+    static func setPopupMaxWidth(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 200)), forKey: popupMaxWidthKey)
+    }
+
+    static func popupMaxHeight() -> CGFloat {
+        let stored = UserDefaults.standard.double(forKey: popupMaxHeightKey)
+        return stored > 0 ? CGFloat(stored) : defaultPopupMaxHeight
+    }
+
+    static func setPopupMaxHeight(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(max(value, 120)), forKey: popupMaxHeightKey)
+    }
+
+    static func language() -> AppLanguage {
+        let stored = UserDefaults.standard.string(forKey: languageKey)
+        return AppLanguage(rawValue: stored ?? "") ?? defaultLanguage
+    }
+
+    static func setLanguage(_ language: AppLanguage) {
+        UserDefaults.standard.set(language.rawValue, forKey: languageKey)
+    }
 }
 
 @MainActor
 private final class PreferencesWindowController: NSObject {
     private let window: NSWindow
+    private let titleField: NSTextField
+    private let descriptionField: NSTextField
     private let apiKeyField: NSSecureTextField
     private let endpointField: NSTextField
     private let thresholdField: NSTextField
     private let deltaField: NSTextField
     private let windowField: NSTextField
+    private let popupMaxWidthField: NSTextField
+    private let popupMaxHeightField: NSTextField
+    private let popupFontSizeLabelField: NSTextField
+    private let languageLabelField: NSTextField
+    private let languagePopUp: NSPopUpButton
     private let popupFontSizeSlider: NSSlider
     private let popupFontSizeValueField: NSTextField
     private let onPopupFontSizeChange: (CGFloat) -> Void
+    private let onPopupLayoutChange: () -> Void
+    private let onLanguageChange: () -> Void
     private let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
+        onPopupLayoutChange: @escaping () -> Void,
+        onLanguageChange: @escaping () -> Void,
         onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void
     ) {
         self.onPopupFontSizeChange = onPopupFontSizeChange
+        self.onPopupLayoutChange = onPopupLayoutChange
+        self.onLanguageChange = onLanguageChange
         self.onForceClickSettingsChange = onForceClickSettingsChange
         NSApplication.shared.activate(ignoringOtherApps: true)
         let contentView = NSView()
         contentView.wantsLayer = true
 
-        let titleField = NSTextField(labelWithString: "Preferences")
+        titleField = NSTextField(labelWithString: UIStrings.Preferences.title)
         titleField.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
         titleField.textColor = .labelColor
 
-        let descriptionField = NSTextField(wrappingLabelWithString: "参数会持久化保存，字体大小实时生效；Force Click 参数修改后需重启。")
+        descriptionField = NSTextField(wrappingLabelWithString: UIStrings.Preferences.description)
         descriptionField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         descriptionField.textColor = .secondaryLabelColor
 
@@ -1184,6 +1372,27 @@ private final class PreferencesWindowController: NSObject {
         windowField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         windowField.isEditable = true
         windowField.isSelectable = true
+        popupMaxWidthField = NSTextField()
+        popupMaxWidthField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupMaxWidthField.isEditable = true
+        popupMaxWidthField.isSelectable = true
+        popupMaxHeightField = NSTextField()
+        popupMaxHeightField.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        popupMaxHeightField.isEditable = true
+        popupMaxHeightField.isSelectable = true
+        popupFontSizeLabelField = NSTextField(labelWithString: UIStrings.Preferences.popupFontSizeLabel)
+        popupFontSizeLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        popupFontSizeLabelField.textColor = .secondaryLabelColor
+        languageLabelField = NSTextField(labelWithString: UIStrings.Preferences.languageLabel)
+        languageLabelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        languageLabelField.textColor = .secondaryLabelColor
+        languagePopUp = NSPopUpButton()
+        languagePopUp.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        languagePopUp.isBordered = true
+        for (index, language) in AppLanguage.allCases.enumerated() {
+            languagePopUp.addItem(withTitle: language.displayName)
+            languagePopUp.item(at: index)?.representedObject = language.rawValue
+        }
         popupFontSizeSlider = NSSlider(
             value: Double(PopupFontPreferences.load()),
             minValue: Double(PopupFontPreferences.minSize),
@@ -1208,12 +1417,15 @@ private final class PreferencesWindowController: NSObject {
         stackView.addArrangedSubview(titleField)
         stackView.addArrangedSubview(descriptionField)
         stackView.addArrangedSubview(Self.makeSliderRow(
-            label: "Popup 字号",
+            labelField: popupFontSizeLabelField,
             slider: popupFontSizeSlider,
             valueField: popupFontSizeValueField
         ))
+        stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
+        stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_HEIGHT", field: popupMaxHeightField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_THRESHOLD", field: thresholdField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_PRESSURE_DELTA", field: deltaField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "FORCE_CLICK_BASELINE_WINDOW_MS", field: windowField))
@@ -1233,7 +1445,7 @@ private final class PreferencesWindowController: NSObject {
             backing: .buffered,
             defer: false
         )
-        window.title = "Preferences"
+        window.title = UIStrings.Preferences.title
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = contentView
@@ -1251,12 +1463,20 @@ private final class PreferencesWindowController: NSObject {
         deltaField.action = #selector(handleDeltaChange(_:))
         windowField.target = self
         windowField.action = #selector(handleWindowMsChange(_:))
+        popupMaxWidthField.target = self
+        popupMaxWidthField.action = #selector(handlePopupMaxWidthChange(_:))
+        popupMaxHeightField.target = self
+        popupMaxHeightField.action = #selector(handlePopupMaxHeightChange(_:))
+        languagePopUp.target = self
+        languagePopUp.action = #selector(handleLanguageChange(_:))
 
         apiKeyField.delegate = self
         endpointField.delegate = self
         thresholdField.delegate = self
         deltaField.delegate = self
         windowField.delegate = self
+        popupMaxWidthField.delegate = self
+        popupMaxHeightField.delegate = self
         refreshValues()
     }
 
@@ -1273,10 +1493,24 @@ private final class PreferencesWindowController: NSObject {
         thresholdField.stringValue = String(format: "%.2f", AppPreferences.pressureThreshold())
         deltaField.stringValue = String(format: "%.2f", AppPreferences.pressureDelta())
         windowField.stringValue = String(format: "%.0f", AppPreferences.baselineWindowMs())
+        popupMaxWidthField.stringValue = String(format: "%.0f", AppPreferences.popupMaxWidth())
+        popupMaxHeightField.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
+        if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
+            languagePopUp.selectItem(at: index)
+        }
 
         let size = PopupFontPreferences.load()
         popupFontSizeSlider.doubleValue = Double(size)
         popupFontSizeValueField.stringValue = PopupFontPreferences.format(size)
+        applyStrings()
+    }
+
+    private func applyStrings() {
+        titleField.stringValue = UIStrings.Preferences.title
+        descriptionField.stringValue = UIStrings.Preferences.description
+        popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
+        languageLabelField.stringValue = UIStrings.Preferences.languageLabel
+        window.title = UIStrings.Preferences.title
     }
 
     private static func makeValueField() -> NSTextField {
@@ -1303,6 +1537,18 @@ private final class PreferencesWindowController: NSObject {
         return row
     }
 
+    private static func makeRow(labelField: NSTextField, field: NSView) -> NSStackView {
+        labelField.setContentHuggingPriority(.required, for: .horizontal)
+        labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [labelField, field])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        return row
+    }
+
     private static func makeEditRow(label: String, field: NSTextField) -> NSStackView {
         let labelField = NSTextField(labelWithString: label)
         labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
@@ -1320,13 +1566,9 @@ private final class PreferencesWindowController: NSObject {
         return row
     }
 
-    private static func makeSliderRow(label: String, slider: NSSlider, valueField: NSTextField) -> NSStackView {
-        let labelField = NSTextField(labelWithString: label)
-        labelField.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        labelField.textColor = .secondaryLabelColor
+    private static func makeSliderRow(labelField: NSTextField, slider: NSSlider, valueField: NSTextField) -> NSStackView {
         labelField.setContentHuggingPriority(.required, for: .horizontal)
         labelField.setContentCompressionResistancePriority(.required, for: .horizontal)
-
         slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         slider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         valueField.setContentHuggingPriority(.required, for: .horizontal)
@@ -1379,6 +1621,32 @@ private final class PreferencesWindowController: NSObject {
         notifyForceClickSettingsChange()
     }
 
+    @objc private func handlePopupMaxWidthChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setPopupMaxWidth(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.0f", AppPreferences.popupMaxWidth())
+        onPopupLayoutChange()
+    }
+
+    @objc private func handlePopupMaxHeightChange(_ sender: NSTextField) {
+        if let value = Double(sender.stringValue) {
+            AppPreferences.setPopupMaxHeight(CGFloat(value))
+        }
+        sender.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
+        onPopupLayoutChange()
+    }
+
+    @objc private func handleLanguageChange(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let language = AppLanguage(rawValue: rawValue) else {
+            return
+        }
+        AppPreferences.setLanguage(language)
+        applyStrings()
+        onLanguageChange()
+    }
+
     private func notifyForceClickSettingsChange() {
         onForceClickSettingsChange(
             Float(AppPreferences.pressureThreshold()),
@@ -1398,6 +1666,10 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             handleApiKeyChange(field)
         case endpointField:
             handleEndpointChange(field)
+        case popupMaxWidthField:
+            handlePopupMaxWidthChange(field)
+        case popupMaxHeightField:
+            handlePopupMaxHeightChange(field)
         case thresholdField:
             handleThresholdChange(field)
         case deltaField:
@@ -1418,6 +1690,10 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             handleApiKeyChange(field)
         case endpointField:
             handleEndpointChange(field)
+        case popupMaxWidthField:
+            handlePopupMaxWidthChange(field)
+        case popupMaxHeightField:
+            handlePopupMaxHeightChange(field)
         case thresholdField:
             handleThresholdChange(field)
         case deltaField:
@@ -1434,41 +1710,52 @@ extension PreferencesWindowController: NSTextFieldDelegate {
 private final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let preferencesController: PreferencesWindowController
+    private let menu: NSMenu
+    private let preferencesItem: NSMenuItem
+    private let quitItem: NSMenuItem
 
     init(preferencesController: PreferencesWindowController) {
         self.preferencesController = preferencesController
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        menu = NSMenu()
+        preferencesItem = NSMenuItem(
+            title: UIStrings.Menu.preferences,
+            action: #selector(openPreferences),
+            keyEquivalent: ","
+        )
+        quitItem = NSMenuItem(
+            title: UIStrings.Menu.quit,
+            action: #selector(quitApp),
+            keyEquivalent: "q"
+        )
         super.init()
         configureStatusItem()
     }
 
     private func configureStatusItem() {
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "text.magnifyingglass", accessibilityDescription: "Digger")
+            let image = NSImage(systemSymbolName: "text.magnifyingglass", accessibilityDescription: UIStrings.Menu.appTitle)
             image?.isTemplate = true
             button.image = image
-            button.toolTip = "Digger"
+            button.toolTip = UIStrings.Menu.appTitle
         }
 
-        let menu = NSMenu()
-        let preferencesItem = NSMenuItem(
-            title: "Preferences…",
-            action: #selector(openPreferences),
-            keyEquivalent: ","
-        )
         preferencesItem.target = self
         menu.addItem(preferencesItem)
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(
-            title: "Quit Digger",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
-        )
         quitItem.target = self
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    func refreshStrings() {
+        preferencesItem.title = UIStrings.Menu.preferences
+        quitItem.title = UIStrings.Menu.quit
+        if let button = statusItem.button {
+            button.toolTip = UIStrings.Menu.appTitle
+        }
     }
 
     @objc private func openPreferences() {
@@ -1737,8 +2024,24 @@ private func eventTapCallback(
     return controller.handle(event: event, type: type)
 }
 
+private struct MainMenuReferences {
+    let appMenuItem: NSMenuItem
+    let quitItem: NSMenuItem
+    let editMenuItem: NSMenuItem
+    let editMenu: NSMenu
+    let undoItem: NSMenuItem
+    let redoItem: NSMenuItem
+    let cutItem: NSMenuItem
+    let copyItem: NSMenuItem
+    let pasteItem: NSMenuItem
+    let selectAllItem: NSMenuItem
+}
+
 @main
 struct Digger {
+    @MainActor
+    private static var mainMenuReferences: MainMenuReferences?
+
     static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -1757,9 +2060,19 @@ struct Digger {
             }
         )
         let eventTap = ForceClickEventTap(monitor: monitor, selectionHandler: selectionHandler)
+        weak var menuBarController: MenuBarController?
         let preferencesController = PreferencesWindowController(
             onPopupFontSizeChange: { newSize in
                 forceClickSelectionPopup.applyPopupTextSize(newSize)
+            },
+            onPopupLayoutChange: {
+                forceClickSelectionPopup.refreshLayout()
+            },
+            onLanguageChange: {
+                forceClickSelectionPopup.applyStrings()
+                forceClickSelectionPopup.refreshLayout()
+                menuBarController?.refreshStrings()
+                applyMainMenuStrings()
             },
             onForceClickSettingsChange: { newThreshold, newDelta, newWindow in
                 monitor.updateSettings(
@@ -1769,7 +2082,8 @@ struct Digger {
                 )
             }
         )
-        let menuBarController = MenuBarController(preferencesController: preferencesController)
+        let menuController = MenuBarController(preferencesController: preferencesController)
+        menuBarController = menuController
 
         Task {
             for await touches in manager.touchDataStream {
@@ -1787,7 +2101,7 @@ struct Digger {
             print("Force click monitor started.")
         }
 
-        withExtendedLifetime(menuBarController) {
+        withExtendedLifetime(menuController) {
             withExtendedLifetime(eventTap) {
                 app.run()
             }
@@ -1798,28 +2112,65 @@ struct Digger {
     private static func buildMainMenu() -> NSMenu {
         let mainMenu = NSMenu()
 
-        let appMenuItem = NSMenuItem()
+        let appMenuItem = NSMenuItem(title: UIStrings.Menu.appTitle, action: nil, keyEquivalent: "")
         let appMenu = NSMenu()
-        appMenu.addItem(
-            withTitle: "Quit Digger",
+        let quitItem = NSMenuItem(
+            title: UIStrings.Menu.quit,
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
+        appMenu.addItem(quitItem)
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
-        let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Undo", action: #selector(UndoManager.undo), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Redo", action: #selector(UndoManager.redo), keyEquivalent: "Z")
+        let editMenuItem = NSMenuItem(title: UIStrings.Menu.edit, action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: UIStrings.Menu.edit)
+        let undoItem = NSMenuItem(title: UIStrings.Menu.undo, action: #selector(UndoManager.undo), keyEquivalent: "z")
+        let redoItem = NSMenuItem(title: UIStrings.Menu.redo, action: #selector(UndoManager.redo), keyEquivalent: "Z")
+        editMenu.addItem(undoItem)
+        editMenu.addItem(redoItem)
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let cutItem = NSMenuItem(title: UIStrings.Menu.cut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        let copyItem = NSMenuItem(title: UIStrings.Menu.copy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        let pasteItem = NSMenuItem(title: UIStrings.Menu.paste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let selectAllItem = NSMenuItem(title: UIStrings.Menu.selectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(cutItem)
+        editMenu.addItem(copyItem)
+        editMenu.addItem(pasteItem)
+        editMenu.addItem(selectAllItem)
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        mainMenuReferences = MainMenuReferences(
+            appMenuItem: appMenuItem,
+            quitItem: quitItem,
+            editMenuItem: editMenuItem,
+            editMenu: editMenu,
+            undoItem: undoItem,
+            redoItem: redoItem,
+            cutItem: cutItem,
+            copyItem: copyItem,
+            pasteItem: pasteItem,
+            selectAllItem: selectAllItem
+        )
+
         return mainMenu
+    }
+
+    @MainActor
+    private static func applyMainMenuStrings() {
+        guard let refs = mainMenuReferences else {
+            return
+        }
+        refs.appMenuItem.title = UIStrings.Menu.appTitle
+        refs.quitItem.title = UIStrings.Menu.quit
+        refs.editMenuItem.title = UIStrings.Menu.edit
+        refs.editMenu.title = UIStrings.Menu.edit
+        refs.undoItem.title = UIStrings.Menu.undo
+        refs.redoItem.title = UIStrings.Menu.redo
+        refs.cutItem.title = UIStrings.Menu.cut
+        refs.copyItem.title = UIStrings.Menu.copy
+        refs.pasteItem.title = UIStrings.Menu.paste
+        refs.selectAllItem.title = UIStrings.Menu.selectAll
     }
 }
