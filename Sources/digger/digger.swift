@@ -329,7 +329,7 @@ private final class ForceClickSelectionHandler {
         }
 
         if copiedText == nil, selectWordIfNeeded {
-            if let location = currentMouseLocation() {
+            if let location = currentEventTapMouseLocation() ?? currentMouseLocation() {
                 performDoubleClick(at: location)
                 Thread.sleep(forTimeInterval: 0.06)
                 let retryChangeCount = pasteboard.changeCount
@@ -360,6 +360,10 @@ private final class ForceClickSelectionHandler {
     }
 
     private func currentMouseLocation() -> CGPoint? {
+        NSEvent.mouseLocation
+    }
+
+    private func currentEventTapMouseLocation() -> CGPoint? {
         CGEvent(source: nil)?.location
     }
 
@@ -501,7 +505,8 @@ private final class ForceClickSelectionPopup {
             x: location.x + offset.x,
             y: location.y - frame.height + offset.y
         )
-        window.setFrameOrigin(origin)
+        let clampedOrigin = clampOrigin(origin, for: frame.size, near: location)
+        window.setFrameOrigin(clampedOrigin)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -519,8 +524,7 @@ private final class ForceClickSelectionPopup {
             let attributed = NSAttributedString(string: textField.stringValue, attributes: attributes)
             let boundingRect = attributed.boundingRect(
                 with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: attributes
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
             )
             return CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height) + 4)
         }
@@ -610,6 +614,39 @@ private final class ForceClickSelectionPopup {
     }
 
     private func ensureMonitors() {}
+
+    private func clampOrigin(_ origin: CGPoint, for size: CGSize, near location: CGPoint) -> CGPoint {
+        guard let screen = screenContaining(location) ?? NSScreen.main ?? NSScreen.screens.first else {
+            return origin
+        }
+
+        let visibleFrame = screen.visibleFrame
+        let padding: CGFloat = 6
+        var x = origin.x
+        var y = origin.y
+
+        if x + size.width > visibleFrame.maxX {
+            x = visibleFrame.maxX - size.width - padding
+        }
+        if x < visibleFrame.minX {
+            x = visibleFrame.minX + padding
+        }
+        if y + size.height > visibleFrame.maxY {
+            y = visibleFrame.maxY - size.height - padding
+        }
+        if y < visibleFrame.minY {
+            y = visibleFrame.minY + padding
+        }
+
+        return CGPoint(x: x, y: y)
+    }
+
+    private func screenContaining(_ location: CGPoint) -> NSScreen? {
+        for screen in NSScreen.screens where screen.frame.contains(location) {
+            return screen
+        }
+        return nil
+    }
 
     func dismissOnEscape() {
         guard window.isVisible else {
