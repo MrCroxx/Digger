@@ -20,6 +20,7 @@ final class PreferencesWindowController: NSObject {
     private let targetLanguagePopUp: NSPopUpButton
     private let popupFontSizeSlider: NSSlider
     private let popupFontSizeValueField: NSTextField
+    private let streamingToggle: NSButton
     private let onPopupFontSizeChange: (CGFloat) -> Void
     private let onPopupLayoutChange: () -> Void
     private let onLanguageChange: () -> Void
@@ -116,6 +117,9 @@ final class PreferencesWindowController: NSObject {
         popupFontSizeValueField.alignment = .right
         popupFontSizeValueField.stringValue = PopupFontPreferences.format(PopupFontPreferences.load())
 
+        streamingToggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+        streamingToggle.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
@@ -132,6 +136,7 @@ final class PreferencesWindowController: NSObject {
         ))
         stackView.addArrangedSubview(Self.makeRow(labelField: languageLabelField, field: languagePopUp))
         stackView.addArrangedSubview(Self.makeRow(labelField: targetLanguageLabelField, field: targetLanguagePopUp))
+        stackView.addArrangedSubview(streamingToggle)
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_API_KEY", field: apiKeyField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "OPENAI_ENDPOINT", field: endpointField))
         stackView.addArrangedSubview(Self.makeEditRow(label: "POPUP_MAX_WIDTH", field: popupMaxWidthField))
@@ -181,6 +186,8 @@ final class PreferencesWindowController: NSObject {
         languagePopUp.action = #selector(handleLanguageChange(_:))
         targetLanguagePopUp.target = self
         targetLanguagePopUp.action = #selector(handleTargetLanguageChange(_:))
+        streamingToggle.target = self
+        streamingToggle.action = #selector(handleStreamingToggle(_:))
 
         apiKeyField.delegate = self
         endpointField.delegate = self
@@ -207,6 +214,7 @@ final class PreferencesWindowController: NSObject {
         windowField.stringValue = String(format: "%.0f", AppPreferences.baselineWindowMs())
         popupMaxWidthField.stringValue = String(format: "%.0f", AppPreferences.popupMaxWidth())
         popupMaxHeightField.stringValue = String(format: "%.0f", AppPreferences.popupMaxHeight())
+        streamingToggle.state = AppPreferences.translationStreamingEnabled() ? .on : .off
         if let index = AppLanguage.allCases.firstIndex(of: AppPreferences.language()) {
             languagePopUp.selectItem(at: index)
         }
@@ -226,6 +234,7 @@ final class PreferencesWindowController: NSObject {
         popupFontSizeLabelField.stringValue = UIStrings.Preferences.popupFontSizeLabel
         languageLabelField.stringValue = UIStrings.Preferences.languageLabel
         targetLanguageLabelField.stringValue = UIStrings.Preferences.targetLanguageLabel
+        streamingToggle.title = UIStrings.Preferences.streamingLabel
         window.title = UIStrings.Preferences.title
     }
 
@@ -370,6 +379,11 @@ final class PreferencesWindowController: NSObject {
         }
         AppPreferences.setTranslationTargetLanguage(language)
     }
+
+    @objc private func handleStreamingToggle(_ sender: NSButton) {
+        AppPreferences.setTranslationStreamingEnabled(sender.state == .on)
+    }
+
 
     private func notifyForceClickSettingsChange() {
         onForceClickSettingsChange(

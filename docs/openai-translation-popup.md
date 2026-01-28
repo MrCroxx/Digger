@@ -105,6 +105,30 @@ await MainActor.run {
 print("译文: \(translation)")
 ```
 
+### 6) 流式译文与自动滚动
+
+本次更新支持“流式输出”开关：
+
+- 开启时：翻译结果按增量片段输出，弹窗内容实时追加
+- 关闭时：仍使用一次性返回，逻辑保持原样
+
+实现要点：
+
+- `OpenAITranslator.translateStream(_:)` 使用 `chatsStream` 获取增量 `delta.content`
+- `ForceClickSelectionHandler` 累积片段并在每次片段到达时刷新弹窗
+- 弹窗更新始终滚动到底部，确保新增内容可见
+
+偏好设置：
+
+- “流式译文”开关保存在 `AppPreferences.translationStreamingEnabled()`
+
+涉及文件：
+
+- `Sources/digger/Translation/OpenAITranslator.swift`
+- `Sources/digger/Selection/ForceClickSelectionHandler.swift`
+- `Sources/digger/UI/ForceClickSelectionPopup.swift`
+- `Sources/digger/Preferences/PreferencesWindowController.swift`
+
 ## 关键文件与职责
 
 - `Package.swift`

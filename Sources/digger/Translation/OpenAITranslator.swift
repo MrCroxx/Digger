@@ -56,4 +56,33 @@ actor OpenAITranslator {
         let result = try await client.chats(query: query)
         return result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
     }
+
+    func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
+        let targetLanguage = AppPreferences.translationTargetLanguage()
+        let query = ChatQuery(
+            messages: [
+                .system(.init(content: .textContent("Translate the user's text into \(targetLanguage.promptName). Preserve meaning, formatting, and proper nouns."))),
+                .user(.init(content: .string(text)))
+            ],
+            model: .gpt4_1_mini,
+            temperature: 0.2
+        )
+        let stream: AsyncThrowingStream<ChatStreamResult, Error> = client.chatsStream(query: query)
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for try await result in stream {
+                        for choice in result.choices {
+                            if let delta = choice.delta.content, !delta.isEmpty {
+                                continuation.yield(delta)
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
 }

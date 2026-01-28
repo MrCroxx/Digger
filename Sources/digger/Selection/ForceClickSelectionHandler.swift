@@ -228,20 +228,77 @@ final class ForceClickSelectionHandler {
             forceClickSelectionPopup.showLoading(original: trimmedText, near: location, requestID: requestID)
         }
         Task { [trimmedText, location, requestID] in
-            let translation: String
             if let translator = OpenAITranslator() {
-                do {
-                    let result = try await translator.translate(trimmedText)
-                    translation = result.isEmpty ? UIStrings.Translation.emptyResult : result
-                } catch {
-                    translation = UIStrings.Translation.failed
+                if AppPreferences.translationStreamingEnabled() {
+                    do {
+                        let stream = try await translator.translateStream(trimmedText)
+                        var accumulated = ""
+                        for try await delta in stream {
+                            guard !delta.isEmpty else {
+                                continue
+                            }
+                            accumulated += delta
+                            await MainActor.run {
+                                forceClickSelectionPopup.updateTranslation(
+                                    accumulated,
+                                    for: requestID,
+                                    near: location,
+                                    isFinal: false
+                                )
+                            }
+                        }
+                        let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let translation = trimmed.isEmpty ? UIStrings.Translation.emptyResult : trimmed
+                        print("\(UIStrings.Translation.printPrefix) \(translation)")
+                        await MainActor.run {
+                            forceClickSelectionPopup.updateTranslation(
+                                translation,
+                                for: requestID,
+                                near: location,
+                                isFinal: true
+                            )
+                        }
+                    } catch {
+                        let translation = UIStrings.Translation.failed
+                        print("\(UIStrings.Translation.printPrefix) \(translation)")
+                        await MainActor.run {
+                            forceClickSelectionPopup.updateTranslation(
+                                translation,
+                                for: requestID,
+                                near: location,
+                                isFinal: true
+                            )
+                        }
+                    }
+                } else {
+                    let translation: String
+                    do {
+                        let result = try await translator.translate(trimmedText)
+                        translation = result.isEmpty ? UIStrings.Translation.emptyResult : result
+                    } catch {
+                        translation = UIStrings.Translation.failed
+                    }
+                    print("\(UIStrings.Translation.printPrefix) \(translation)")
+                    await MainActor.run {
+                        forceClickSelectionPopup.updateTranslation(
+                            translation,
+                            for: requestID,
+                            near: location,
+                            isFinal: true
+                        )
+                    }
                 }
             } else {
-                translation = UIStrings.Translation.missingApiKey
-            }
-            print("\(UIStrings.Translation.printPrefix) \(translation)")
-            await MainActor.run {
-                forceClickSelectionPopup.updateTranslation(translation, for: requestID, near: location)
+                let translation = UIStrings.Translation.missingApiKey
+                print("\(UIStrings.Translation.printPrefix) \(translation)")
+                await MainActor.run {
+                    forceClickSelectionPopup.updateTranslation(
+                        translation,
+                        for: requestID,
+                        near: location,
+                        isFinal: true
+                    )
+                }
             }
         }
     }

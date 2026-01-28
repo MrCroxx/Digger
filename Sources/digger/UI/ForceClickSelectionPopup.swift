@@ -162,21 +162,27 @@ final class ForceClickSelectionPopup {
         window.makeKeyAndOrderFront(nil)
     }
 
-    func updateTranslation(_ translation: String, for requestID: UUID, near location: CGPoint) {
+    func updateTranslation(_ translation: String, for requestID: UUID, near location: CGPoint, isFinal: Bool) {
         guard currentRequestID == requestID else {
             return
         }
         stopLoadingAnimation()
-        let trimmedTranslation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        let updatedTranslation = isFinal
+            ? translation.trimmingCharacters(in: .whitespacesAndNewlines)
+            : translation
         lastAnchorLocation = location
         isShowingTranslation = true
         isShowingLoading = false
-        translationTextField.stringValue = trimmedTranslation
+        translationTextField.stringValue = updatedTranslation
         let contentSize = layoutContent(showTranslation: isShowingTranslation, showLoading: isShowingLoading, near: location)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            setWindowFrame(contentSize: contentSize, near: location, animated: true)
+        if isFinal {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                setWindowFrame(contentSize: contentSize, near: location, animated: true)
+            }
+        } else {
+            setWindowFrame(contentSize: contentSize, near: location, animated: false)
         }
     }
 
@@ -236,6 +242,8 @@ final class ForceClickSelectionPopup {
         translationTitleField.isHidden = !showTranslation
         translationTextField.isHidden = !showTranslation
         loadingTextField.isHidden = !showLoading
+
+        let previousScrollOrigin = scrollView.contentView.bounds.origin
 
         let padding = CGSize(width: 10, height: 8)
         let minWidth: CGFloat = 120
@@ -452,7 +460,9 @@ final class ForceClickSelectionPopup {
         contentView.frame = NSRect(origin: .zero, size: visibleSize)
         scrollView.frame = contentView.bounds
         scrollView.hasVerticalScroller = needsVerticalScroll
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: max(0, contentHeight - visibleHeight)))
+        let maxScrollY = max(0, contentHeight - visibleHeight)
+        let bottomY = scrollView.contentView.isFlipped ? maxScrollY : 0
+        scrollView.contentView.scroll(to: NSPoint(x: previousScrollOrigin.x, y: bottomY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
         return visibleSize
     }

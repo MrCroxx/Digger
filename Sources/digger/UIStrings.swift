@@ -59,6 +59,7 @@ enum UIStrings {
         case preferencesPopupFontSizeLabel
         case preferencesLanguageLabel
         case preferencesTargetLanguageLabel
+        case preferencesStreamingLabel
         case menuPreferences
         case menuQuit
         case menuEdit
@@ -90,6 +91,7 @@ enum UIStrings {
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
+        static var streamingLabel: String { value(.preferencesStreamingLabel) }
     }
 
     enum Menu {
@@ -127,6 +129,7 @@ enum UIStrings {
             .preferencesPopupFontSizeLabel: "Popup Font Size",
             .preferencesLanguageLabel: "Language",
             .preferencesTargetLanguageLabel: "Target Language",
+            .preferencesStreamingLabel: "Stream Translation",
             .menuPreferences: "Preferences…",
             .menuQuit: "Quit Digger",
             .menuEdit: "Edit",
@@ -151,6 +154,7 @@ enum UIStrings {
             .preferencesPopupFontSizeLabel: "弹窗字号",
             .preferencesLanguageLabel: "语言",
             .preferencesTargetLanguageLabel: "目标语言",
+            .preferencesStreamingLabel: "流式译文",
             .menuPreferences: "偏好设置…",
             .menuQuit: "退出 Digger",
             .menuEdit: "编辑",
@@ -175,6 +179,7 @@ enum UIStrings {
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
             .preferencesLanguageLabel: "言語",
             .preferencesTargetLanguageLabel: "翻訳先",
+            .preferencesStreamingLabel: "ストリーミング翻訳",
             .menuPreferences: "環境設定…",
             .menuQuit: "Digger を終了",
             .menuEdit: "編集",
