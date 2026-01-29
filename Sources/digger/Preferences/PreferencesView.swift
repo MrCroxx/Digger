@@ -411,8 +411,8 @@ struct ShortcutRecorderView: NSViewRepresentable {
         field.controlSize = .small
         field.isEditable = true
         field.isSelectable = false
-        field.isBordered = true
-        field.focusRingType = .default
+        field.isBordered = false
+        field.focusRingType = .none
         field.placeholderString = placeholder
         field.currentShortcut = shortcut
         field.onShortcutChange = { newShortcut in

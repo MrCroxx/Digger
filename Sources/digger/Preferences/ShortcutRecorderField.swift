@@ -10,6 +10,21 @@ final class ShortcutRecorderField: NSTextField {
         }
     }
     private var localMonitor: Any?
+    private var isFocused: Bool = false {
+        didSet {
+            updateFocusAppearance()
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureFocusAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureFocusAppearance()
+    }
 
     override var acceptsFirstResponder: Bool {
         true
@@ -19,12 +34,14 @@ final class ShortcutRecorderField: NSTextField {
         let didBecome = super.becomeFirstResponder()
         if didBecome {
             startMonitoring()
+            isFocused = true
         }
         return didBecome
     }
 
     override func resignFirstResponder() -> Bool {
         stopMonitoring()
+        isFocused = false
         return super.resignFirstResponder()
     }
 
@@ -44,6 +61,9 @@ final class ShortcutRecorderField: NSTextField {
     }
 
     private func handleShortcutEvent(_ event: NSEvent) -> Bool {
+        guard isShortcutFocused else {
+            return false
+        }
         if event.keyCode == CGKeyCode(kVK_Escape) {
             window?.makeFirstResponder(nil)
             return true
@@ -76,6 +96,41 @@ final class ShortcutRecorderField: NSTextField {
         if let localMonitor {
             NSEvent.removeMonitor(localMonitor)
             self.localMonitor = nil
+        }
+    }
+
+    private var isShortcutFocused: Bool {
+        guard let window else {
+            return false
+        }
+        if window.firstResponder === self {
+            return true
+        }
+        if let editor = currentEditor(), window.firstResponder === editor {
+            return true
+        }
+        return false
+    }
+
+    private func configureFocusAppearance() {
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        drawsBackground = true
+        updateFocusAppearance()
+    }
+
+    private func updateFocusAppearance() {
+        guard let layer else {
+            return
+        }
+        if isFocused {
+            layer.borderWidth = 1.5
+            layer.borderColor = NSColor.controlAccentColor.cgColor
+            backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)
+        } else {
+            layer.borderWidth = 1.0
+            layer.borderColor = NSColor.separatorColor.cgColor
+            backgroundColor = NSColor.textBackgroundColor
         }
     }
 }

@@ -21,6 +21,12 @@ This document describes the configurable keyboard shortcut that triggers the sam
 - Local event monitoring is used so Cmd-based combos are still captured even if the system tries to treat them as menu key equivalents.
 - Esc cancels recording and clears focus without changing the shortcut.
 
+## Focus and Recording Behavior
+
+- The recorder only accepts shortcuts when it is the window's first responder (or its field editor is).
+- Key presses elsewhere in the Preferences window are ignored, so existing shortcuts are not overwritten.
+- Focus state is explicit: the field draws a highlighted border and subtle background when active, then reverts on blur.
+
 ## Matching and Triggering
 
 - `KeyboardShortcut` normalizes modifiers to a fixed set (Cmd/Ctrl/Opt/Shift).
