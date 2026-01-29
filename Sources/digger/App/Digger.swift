@@ -53,6 +53,7 @@ struct Digger {
         }
         let menuController = MenuBarController(preferencesController: preferencesController)
         menuBarController = menuController
+        let welcomeController = WelcomeWindowController()
 
         Task {
             for await touches in manager.touchDataStream {
@@ -64,15 +65,35 @@ struct Digger {
             print("Failed to start OpenMultitouchSupport listener.")
         }
 
-        if !eventTap.start() {
-            print("Failed to register event tap. Enable Accessibility permissions.")
-        } else {
-            print("Force click monitor started.")
+        var eventTapStarted = false
+        let startEventTapIfNeeded = {
+            guard !eventTapStarted else {
+                return
+            }
+            guard !PermissionChecker.needsAttention() else {
+                return
+            }
+            if !eventTap.start() {
+                print("Failed to register event tap. Enable Accessibility permissions.")
+            } else {
+                print("Force click monitor started.")
+                eventTapStarted = true
+            }
+        }
+        welcomeController.onReady = {
+            startEventTapIfNeeded()
+        }
+        startEventTapIfNeeded()
+
+        if !AppPreferences.welcomeCompleted() || PermissionChecker.needsAttention() {
+            welcomeController.show()
         }
 
         withExtendedLifetime(menuController) {
             withExtendedLifetime(eventTap) {
-                app.run()
+                withExtendedLifetime(welcomeController) {
+                    app.run()
+                }
             }
         }
     }

@@ -112,6 +112,14 @@ enum UIStrings {
         case menuAppTitle
         case menuWindow
         case menuClose
+        case welcomeTitle
+        case welcomeSubtitle
+        case welcomeAccessibilityTitle
+        case welcomeAccessibilityDescription
+        case welcomeOpenAccessibilityButton
+        case welcomeStartButton
+        case welcomeStatusReady
+        case welcomeStatusMissing
     }
 
     enum Translation {
@@ -191,6 +199,17 @@ enum UIStrings {
         static var close: String { value(.menuClose) }
     }
 
+    enum Welcome {
+        static var title: String { value(.welcomeTitle) }
+        static var subtitle: String { value(.welcomeSubtitle) }
+        static var accessibilityTitle: String { value(.welcomeAccessibilityTitle) }
+        static var accessibilityDescription: String { value(.welcomeAccessibilityDescription) }
+        static var openAccessibilityButton: String { value(.welcomeOpenAccessibilityButton) }
+        static var startButton: String { value(.welcomeStartButton) }
+        static var statusReady: String { value(.welcomeStatusReady) }
+        static var statusMissing: String { value(.welcomeStatusMissing) }
+    }
+
     static func value(_ key: Key) -> String {
         let language = AppPreferences.language()
         if let localized = strings[language]?[key] {
@@ -265,7 +284,15 @@ enum UIStrings {
             .menuSelectAll: "Select All",
             .menuAppTitle: "Digger",
             .menuWindow: "Window",
-            .menuClose: "Close"
+            .menuClose: "Close",
+            .welcomeTitle: "Welcome to Digger",
+            .welcomeSubtitle: "To get started, enable the permissions below in System Settings.",
+            .welcomeAccessibilityTitle: "Accessibility",
+            .welcomeAccessibilityDescription: "Allows Digger to read selected text and listen for shortcuts.",
+            .welcomeOpenAccessibilityButton: "Open Accessibility Settings",
+            .welcomeStartButton: "Get Started",
+            .welcomeStatusReady: "All permissions are ready",
+            .welcomeStatusMissing: "Permissions required"
         ],
         .chineseSimplified: [
             .translationEmptyResult: "翻译结果为空",
@@ -332,7 +359,15 @@ enum UIStrings {
             .menuSelectAll: "全选",
             .menuAppTitle: "Digger",
             .menuWindow: "窗口",
-            .menuClose: "关闭"
+            .menuClose: "关闭",
+            .welcomeTitle: "欢迎使用 Digger",
+            .welcomeSubtitle: "开始使用前，请在系统设置中开启以下权限。",
+            .welcomeAccessibilityTitle: "辅助功能",
+            .welcomeAccessibilityDescription: "用于读取选中文本并监听快捷键。",
+            .welcomeOpenAccessibilityButton: "打开辅助功能设置",
+            .welcomeStartButton: "开始使用",
+            .welcomeStatusReady: "权限已就绪",
+            .welcomeStatusMissing: "需要授权"
         ],
         .japanese: [
             .translationEmptyResult: "翻訳結果が空です",
@@ -399,7 +434,15 @@ enum UIStrings {
             .menuSelectAll: "すべて選択",
             .menuAppTitle: "Digger",
             .menuWindow: "ウインドウ",
-            .menuClose: "閉じる"
+            .menuClose: "閉じる",
+            .welcomeTitle: "Digger へようこそ",
+            .welcomeSubtitle: "使用を開始するには、システム設定で以下の権限を有効にしてください。",
+            .welcomeAccessibilityTitle: "アクセシビリティ",
+            .welcomeAccessibilityDescription: "選択したテキストの取得とショートカットの検知に必要です。",
+            .welcomeOpenAccessibilityButton: "アクセシビリティ設定を開く",
+            .welcomeStartButton: "開始する",
+            .welcomeStatusReady: "権限は準備完了です",
+            .welcomeStatusMissing: "権限が必要です"
         ]
     ]
 }
