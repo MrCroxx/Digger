@@ -320,6 +320,53 @@ struct PreferencesView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
             }
+            HStack(spacing: 12) {
+                Button(UIStrings.Preferences.apiTestLabel) {
+                    Task {
+                        await viewModel.testAPI()
+                    }
+                }
+                .disabled(isApiTestRunning)
+                if isApiTestRunning {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                if let message = apiTestMessage {
+                    Text(message)
+                        .font(.system(size: 12))
+                        .foregroundColor(apiTestMessageColor)
+                        .lineLimit(2)
+                }
+            }
+        }
+    }
+
+    private var isApiTestRunning: Bool {
+        if case .testing = viewModel.apiTestState {
+            return true
+        }
+        return false
+    }
+
+    private var apiTestMessage: String? {
+        switch viewModel.apiTestState {
+        case .idle:
+            return nil
+        case .testing:
+            return UIStrings.Preferences.apiTestInProgress
+        case .success(let message), .failure(let message):
+            return message
+        }
+    }
+
+    private var apiTestMessageColor: Color {
+        switch viewModel.apiTestState {
+        case .success:
+            return .green
+        case .failure:
+            return .red
+        case .testing, .idle:
+            return .secondary
         }
     }
 

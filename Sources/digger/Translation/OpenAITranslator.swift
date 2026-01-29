@@ -5,7 +5,36 @@ actor OpenAITranslator {
     private let client: OpenAI
 
     init?() {
-        let token = AppPreferences.apiKey()
+        guard let configuration = Self.configuration(
+            apiKey: AppPreferences.apiKey(),
+            endpoint: AppPreferences.endpoint()
+        ) else {
+            return nil
+        }
+
+        client = OpenAI(configuration: configuration)
+    }
+
+    static func testConnection(apiKey: String, endpoint: String, model: String) async throws -> String {
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedModel.isEmpty else {
+            throw TestError.missingModel
+        }
+        guard let configuration = configuration(apiKey: apiKey, endpoint: endpoint) else {
+            throw TestError.missingApiKey
+        }
+        let client = OpenAI(configuration: configuration)
+        let query = ChatQuery(
+            messages: [.user(.init(content: .string("Reply with OK.")))],
+            model: trimmedModel,
+            temperature: 0
+        )
+        let result = try await client.chats(query: query)
+        return result.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func configuration(apiKey: String, endpoint: String) -> OpenAI.Configuration? {
+        let token = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else {
             return nil
         }
@@ -14,7 +43,7 @@ actor OpenAITranslator {
         var basePath = "/v1"
         var port = 443
         var scheme = "https"
-        let endpointText = AppPreferences.endpoint()
+        let endpointText = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         if !endpointText.isEmpty,
            let endpoint = URL(string: endpointText) {
             if let endpointHost = endpoint.host {
@@ -31,7 +60,7 @@ actor OpenAITranslator {
             }
         }
 
-        let configuration = OpenAI.Configuration(
+        return OpenAI.Configuration(
             token: token,
             host: host,
             port: port,
@@ -39,8 +68,20 @@ actor OpenAITranslator {
             basePath: basePath,
             parsingOptions: .relaxed
         )
+    }
 
-        client = OpenAI(configuration: configuration)
+    private enum TestError: LocalizedError {
+        case missingApiKey
+        case missingModel
+
+        var errorDescription: String? {
+            switch self {
+            case .missingApiKey:
+                return "OPENAI_API_KEY is not set"
+            case .missingModel:
+                return "OPENAI_MODEL is not set"
+            }
+        }
     }
 
     func translate(_ text: String) async throws -> String {

@@ -91,6 +91,13 @@ enum UIStrings {
         case preferencesFunctionTitlePlaceholder
         case preferencesFunctionPromptPlaceholder
         case preferencesFunctionDefaultTitle
+        case preferencesApiTestLabel
+        case preferencesApiTestButton
+        case preferencesApiTestInProgress
+        case preferencesApiTestSuccess
+        case preferencesApiTestFailedPrefix
+        case preferencesApiTestMissingKey
+        case preferencesApiTestMissingModel
         case menuPreferences
         case menuQuit
         case menuEdit
@@ -156,6 +163,13 @@ enum UIStrings {
         static var functionTitlePlaceholder: String { value(.preferencesFunctionTitlePlaceholder) }
         static var functionPromptPlaceholder: String { value(.preferencesFunctionPromptPlaceholder) }
         static var functionDefaultTitle: String { value(.preferencesFunctionDefaultTitle) }
+        static var apiTestLabel: String { value(.preferencesApiTestLabel) }
+        static var apiTestButton: String { value(.preferencesApiTestButton) }
+        static var apiTestInProgress: String { value(.preferencesApiTestInProgress) }
+        static var apiTestSuccess: String { value(.preferencesApiTestSuccess) }
+        static var apiTestFailedPrefix: String { value(.preferencesApiTestFailedPrefix) }
+        static var apiTestMissingKey: String { value(.preferencesApiTestMissingKey) }
+        static var apiTestMissingModel: String { value(.preferencesApiTestMissingModel) }
     }
 
     enum Menu {
@@ -227,6 +241,13 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "Function title",
             .preferencesFunctionPromptPlaceholder: "Enter prompt",
             .preferencesFunctionDefaultTitle: "New Function",
+            .preferencesApiTestLabel: "Test API",
+            .preferencesApiTestButton: "Test",
+            .preferencesApiTestInProgress: "Testing…",
+            .preferencesApiTestSuccess: "API configuration looks good",
+            .preferencesApiTestFailedPrefix: "Test failed:",
+            .preferencesApiTestMissingKey: "Please enter an API key first",
+            .preferencesApiTestMissingModel: "Please enter a model first",
             .menuPreferences: "Preferences…",
             .menuQuit: "Quit Digger",
             .menuEdit: "Edit",
@@ -285,6 +306,13 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "功能标题",
             .preferencesFunctionPromptPlaceholder: "输入 prompt",
             .preferencesFunctionDefaultTitle: "新功能",
+            .preferencesApiTestLabel: "测试 API",
+            .preferencesApiTestButton: "测试",
+            .preferencesApiTestInProgress: "测试中…",
+            .preferencesApiTestSuccess: "API 配置正常",
+            .preferencesApiTestFailedPrefix: "测试失败:",
+            .preferencesApiTestMissingKey: "请先输入 API Key",
+            .preferencesApiTestMissingModel: "请先输入模型",
             .menuPreferences: "偏好设置…",
             .menuQuit: "退出 Digger",
             .menuEdit: "编辑",
@@ -343,6 +371,13 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "機能タイトル",
             .preferencesFunctionPromptPlaceholder: "プロンプトを入力",
             .preferencesFunctionDefaultTitle: "新規機能",
+            .preferencesApiTestLabel: "API テスト",
+            .preferencesApiTestButton: "テスト",
+            .preferencesApiTestInProgress: "テスト中…",
+            .preferencesApiTestSuccess: "API 設定は正常です",
+            .preferencesApiTestFailedPrefix: "テストに失敗しました:",
+            .preferencesApiTestMissingKey: "API Key を入力してください",
+            .preferencesApiTestMissingModel: "モデルを入力してください",
             .menuPreferences: "環境設定…",
             .menuQuit: "Digger を終了",
             .menuEdit: "編集",
