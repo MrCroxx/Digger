@@ -17,6 +17,7 @@ final class PreferencesViewModel: ObservableObject {
     @Published var pressureDeltaText: String = String(format: "%.2f", AppPreferences.pressureDelta())
     @Published var baselineWindowText: String = String(format: "%.0f", AppPreferences.baselineWindowMs())
     @Published var customFunctions: [CustomFunction] = AppPreferences.customFunctions()
+    @Published var systemPrompt: String = AppPreferences.systemPrompt()
     @Published var selectedFunctionID: CustomFunction.ID?
 
     func refresh() {
@@ -35,6 +36,7 @@ final class PreferencesViewModel: ObservableObject {
         pressureDeltaText = String(format: "%.2f", AppPreferences.pressureDelta())
         baselineWindowText = String(format: "%.0f", AppPreferences.baselineWindowMs())
         customFunctions = AppPreferences.customFunctions()
+        systemPrompt = AppPreferences.systemPrompt()
         if let selectedFunctionID, customFunctions.contains(where: { $0.id == selectedFunctionID }) {
             return
         }
