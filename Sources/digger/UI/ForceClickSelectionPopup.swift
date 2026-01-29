@@ -155,6 +155,7 @@ final class ForceClickSelectionPopup {
     private let window: PopupWindow
     private let originalTitleField: NSTextField
     private let originalTextField: NSTextField
+    private let originalCollapseButton: HoverableIconButton
     private let contentView: DraggableContentView
     private let headerView: NSView
     private let modelLabelField: NSTextField
@@ -179,6 +180,7 @@ final class ForceClickSelectionPopup {
     private let baseTooltipSize: CGFloat = 11
     private var functionSections: [FunctionSection] = []
     private var functionIDs: [UUID] = []
+    private var originalIsCollapsed = false
     private var layoutUpdateTimer: Timer?
     private var pendingLayoutLocation: CGPoint?
     private var pendingLayoutAnimate = false
@@ -189,9 +191,11 @@ final class ForceClickSelectionPopup {
         let function: PopupFunction
         let titleField: NSTextField
         let textField: NSTextField
+        let collapseButton: HoverableIconButton
         let copyButton: HoverableIconButton
         let dividerView: NSView
         var isLoading: Bool
+        var isCollapsed: Bool
     }
 
     init() {
@@ -219,6 +223,13 @@ final class ForceClickSelectionPopup {
             toolTip: UIStrings.Popup.copyResult,
             target: nil,
             action: #selector(handleCopyOriginal)
+        )
+
+        originalCollapseButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "chevron.down",
+            toolTip: UIStrings.Popup.collapseResult,
+            target: nil,
+            action: #selector(handleToggleOriginalCollapse)
         )
 
         copyAllButton = ForceClickSelectionPopup.makeIconButton(
@@ -254,6 +265,7 @@ final class ForceClickSelectionPopup {
         documentView = NSView()
         documentView.addSubview(originalTitleField)
         documentView.addSubview(originalTextField)
+        documentView.addSubview(originalCollapseButton)
         documentView.addSubview(originalCopyButton)
 
         scrollView = DraggableScrollView()
@@ -305,6 +317,13 @@ final class ForceClickSelectionPopup {
             }
             self.handleHover(isHovering, for: self.originalCopyButton)
         }
+        originalCollapseButton.target = self
+        originalCollapseButton.onHover = { [weak self] isHovering in
+            guard let self else {
+                return
+            }
+            self.handleHover(isHovering, for: self.originalCollapseButton)
+        }
 
         applyPopupTextSize(PopupFontPreferences.load())
         applyStrings()
@@ -321,6 +340,9 @@ final class ForceClickSelectionPopup {
         lastAnchorLocation = location
         cancelPendingLayoutUpdate()
         originalTextField.stringValue = trimmedOriginal
+        originalIsCollapsed = AppPreferences.popupOriginalCollapsed()
+        originalTextField.isHidden = originalIsCollapsed
+        updateOriginalCollapseButton()
         configureFunctionSections(functions)
         for index in functionSections.indices {
             functionSections[index].isLoading = true
@@ -346,6 +368,20 @@ final class ForceClickSelectionPopup {
         scheduleLayoutUpdate(near: location, animated: isFinal)
     }
 
+    func markStreamingStarted(for requestID: UUID, functionID: UUID, near location: CGPoint) {
+        guard currentRequestID == requestID,
+              let index = functionSections.firstIndex(where: { $0.function.id == functionID }) else {
+            return
+        }
+        functionSections[index].isLoading = false
+        functionSections[index].textField.stringValue = ""
+        if !functionSections.contains(where: { $0.isLoading }) {
+            stopLoadingAnimation()
+        }
+        updateActionButtons()
+        scheduleLayoutUpdate(near: location, animated: false)
+    }
+
     func applyPopupTextSize(_ textSize: CGFloat) {
         let clampedSize = PopupFontPreferences.clamp(textSize)
         let scale = clampedSize / baseTextSize
@@ -369,8 +405,10 @@ final class ForceClickSelectionPopup {
             functionSections[translationIndex].titleField.stringValue = UIStrings.Popup.translationTitle
         }
         originalCopyButton.tooltipText = UIStrings.Popup.copyResult
+        updateOriginalCollapseButton()
         for index in functionSections.indices {
             functionSections[index].copyButton.tooltipText = UIStrings.Popup.copyResult
+            updateCollapseButton(for: index)
         }
         copyAllButton.tooltipText = UIStrings.Popup.copyAll
         preferencesButton.tooltipText = UIStrings.Popup.openPreferences
@@ -389,17 +427,20 @@ final class ForceClickSelectionPopup {
     private func configureFunctionSections(_ functions: [PopupFunction]) {
         let ids = functions.map { $0.id }
         let scale = PopupFontPreferences.load() / baseTextSize
+        let collapsedIDs = AppPreferences.popupCollapsedFunctionIDs()
         let needsRebuild = ids != functionIDs
         if needsRebuild {
             for section in functionSections {
                 section.titleField.removeFromSuperview()
                 section.textField.removeFromSuperview()
+                section.collapseButton.removeFromSuperview()
                 section.copyButton.removeFromSuperview()
                 section.dividerView.removeFromSuperview()
             }
             functionSections.removeAll()
             functionIDs = ids
             for function in functions {
+                let isCollapsed = collapsedIDs.contains(function.id)
                 let titleField = NSTextField(labelWithString: function.title)
                 titleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
                 titleField.textColor = .secondaryLabelColor
@@ -417,6 +458,20 @@ final class ForceClickSelectionPopup {
                 textField.maximumNumberOfLines = 0
                 textField.cell?.wraps = true
                 textField.cell?.usesSingleLineMode = false
+                textField.isHidden = isCollapsed
+
+                let collapseButton = ForceClickSelectionPopup.makeIconButton(
+                    symbolName: isCollapsed ? "chevron.right" : "chevron.down",
+                    toolTip: isCollapsed ? UIStrings.Popup.expandResult : UIStrings.Popup.collapseResult,
+                    target: self,
+                    action: #selector(handleToggleSectionCollapse(_:))
+                )
+                collapseButton.onHover = { [weak self, weak collapseButton] isHovering in
+                    guard let self, let collapseButton else {
+                        return
+                    }
+                    self.handleHover(isHovering, for: collapseButton)
+                }
 
                 let copyButton = ForceClickSelectionPopup.makeIconButton(
                     symbolName: "doc.on.doc",
@@ -438,28 +493,36 @@ final class ForceClickSelectionPopup {
                 documentView.addSubview(dividerView)
                 documentView.addSubview(titleField)
                 documentView.addSubview(textField)
+                documentView.addSubview(collapseButton)
                 documentView.addSubview(copyButton)
 
                 functionSections.append(FunctionSection(
                     function: function,
                     titleField: titleField,
                     textField: textField,
+                    collapseButton: collapseButton,
                     copyButton: copyButton,
                     dividerView: dividerView,
-                    isLoading: true
+                    isLoading: true,
+                    isCollapsed: isCollapsed
                 ))
             }
         } else {
             for index in functionSections.indices {
+                let isCollapsed = collapsedIDs.contains(functions[index].id)
                 functionSections[index].titleField.stringValue = functions[index].title
+                functionSections[index].textField.isHidden = isCollapsed
+                updateCollapseButton(for: index, isCollapsed: isCollapsed)
                 let current = functionSections[index]
                 functionSections[index] = FunctionSection(
                     function: functions[index],
                     titleField: current.titleField,
                     textField: current.textField,
+                    collapseButton: current.collapseButton,
                     copyButton: current.copyButton,
                     dividerView: current.dividerView,
-                    isLoading: current.isLoading
+                    isLoading: current.isLoading,
+                    isCollapsed: isCollapsed
                 )
             }
         }
@@ -476,7 +539,11 @@ final class ForceClickSelectionPopup {
                 stopLoadingAnimation()
             }
         } else {
-            functionSections[index].isLoading = true
+            let hasContent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            functionSections[index].isLoading = !hasContent
+            if hasContent, !functionSections.contains(where: { $0.isLoading }) {
+                stopLoadingAnimation()
+            }
         }
     }
 
@@ -537,22 +604,22 @@ final class ForceClickSelectionPopup {
         ) -> (contentWidth: CGFloat, contentHeight: CGFloat, sizes: (CGSize, CGSize, [CGSize], [CGSize])) {
             let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
             let textMaxWidth = maxWidth - paddingLeft - paddingRight
-            let originalTextSize = textSize(for: originalTextField, maxWidth: textMaxWidth)
+            let originalTextSize = originalIsCollapsed ? .zero : textSize(for: originalTextField, maxWidth: textMaxWidth)
             var sectionTitleSizes: [CGSize] = []
             var sectionTextSizes: [CGSize] = []
             sectionTitleSizes.reserveCapacity(functionSections.count)
             sectionTextSizes.reserveCapacity(functionSections.count)
             for section in functionSections {
                 let titleSize = (section.titleField.stringValue as NSString).size(withAttributes: titleAttributes)
-                let textSizeValue = textSize(for: section.textField, maxWidth: textMaxWidth)
+                let textSizeValue = section.isCollapsed ? .zero : textSize(for: section.textField, maxWidth: textMaxWidth)
                 sectionTitleSizes.append(titleSize)
                 sectionTextSizes.append(textSizeValue)
             }
 
-            let originalTitleWidth = originalTitleSize.width + sectionButtonSize + sectionButtonSpacing
+            let originalTitleWidth = originalTitleSize.width + (sectionButtonSize * 2) + (sectionButtonSpacing * 2)
             var contentTextWidth = max(originalTitleWidth, originalTextSize.width)
             for index in sectionTitleSizes.indices {
-                let sectionTitleWidth = sectionTitleSizes[index].width + sectionButtonSize + sectionButtonSpacing
+                let sectionTitleWidth = sectionTitleSizes[index].width + (sectionButtonSize * 2) + (sectionButtonSpacing * 2)
                 let sectionWidth = max(sectionTitleWidth, sectionTextSizes[index].width)
                 contentTextWidth = max(contentTextWidth, sectionWidth)
             }
@@ -562,11 +629,12 @@ final class ForceClickSelectionPopup {
             )
             let adjustedTextMaxWidth = contentWidth - paddingLeft - paddingRight
             if abs(adjustedTextMaxWidth - textMaxWidth) > 0.5 {
-                let adjustedOriginalTextSize = textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
+                let adjustedOriginalTextSize = originalIsCollapsed ? .zero : textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
                 var adjustedSectionTextSizes: [CGSize] = []
                 adjustedSectionTextSizes.reserveCapacity(functionSections.count)
                 for section in functionSections {
-                    adjustedSectionTextSizes.append(textSize(for: section.textField, maxWidth: adjustedTextMaxWidth))
+                    let adjustedSize = section.isCollapsed ? .zero : textSize(for: section.textField, maxWidth: adjustedTextMaxWidth)
+                    adjustedSectionTextSizes.append(adjustedSize)
                 }
                 return (
                     contentWidth,
@@ -608,19 +676,22 @@ final class ForceClickSelectionPopup {
             padding: CGSize
         ) -> CGFloat {
             let originalTitleHeight = ceil(originalTitleSize.height)
-            let originalTextHeight = max(ceil(originalTextSize.height), 16)
+            let originalTextHeight = originalIsCollapsed ? 0 : max(ceil(originalTextSize.height), 16)
+            let originalSpacing = originalIsCollapsed ? 0 : titleTextSpacing
             var height = padding.height * 2 + 4
                 + originalTitleHeight
-                + titleTextSpacing
+                + originalSpacing
                 + originalTextHeight
             for index in sectionTitleSizes.indices {
                 let titleHeight = ceil(sectionTitleSizes[index].height)
-                let textHeight = max(ceil(sectionTextSizes[index].height), 16)
+                let isCollapsed = functionSections[index].isCollapsed
+                let textHeight = isCollapsed ? 0 : max(ceil(sectionTextSizes[index].height), 16)
+                let spacing = isCollapsed ? 0 : titleTextSpacing
                 height += dividerSpacing
                     + dividerHeight
                     + dividerSpacing
                     + titleHeight
-                    + titleTextSpacing
+                    + spacing
                     + textHeight
             }
             return height
@@ -667,24 +738,33 @@ final class ForceClickSelectionPopup {
         originalTitleField.frame = NSRect(
             x: titleX,
             y: y,
-            width: max(0, availableWidth - sectionButtonSize - sectionButtonSpacing),
+            width: max(0, availableWidth - (sectionButtonSize * 2) - (sectionButtonSpacing * 2)),
             height: ceil(originalTitleSize.height)
         )
-        let originalButtonX = paddingLeft + availableWidth - sectionButtonSize
+        let originalCollapseButtonX = paddingLeft + availableWidth - sectionButtonSize
+        let originalCopyButtonX = originalCollapseButtonX - sectionButtonSpacing - sectionButtonSize
         let originalButtonY = y + max(0, (ceil(originalTitleSize.height) - sectionButtonSize) * 0.5)
-        originalCopyButton.frame = NSRect(
-            x: originalButtonX,
+        originalCollapseButton.frame = NSRect(
+            x: originalCollapseButtonX,
             y: originalButtonY,
             width: sectionButtonSize,
             height: sectionButtonSize
         )
-        y -= titleTextSpacing + max(ceil(originalTextSize.height), 16)
+        originalCopyButton.frame = NSRect(
+            x: originalCopyButtonX,
+            y: originalButtonY,
+            width: sectionButtonSize,
+            height: sectionButtonSize
+        )
+        let originalTextHeight = originalIsCollapsed ? 0 : max(ceil(originalTextSize.height), 16)
+        let originalSpacing = originalIsCollapsed ? 0 : titleTextSpacing
+        y -= originalSpacing + originalTextHeight
 
         originalTextField.frame = NSRect(
             x: textX,
             y: y,
             width: availableWidth,
-            height: max(ceil(originalTextSize.height), 16)
+            height: originalTextHeight
         )
 
         for index in functionSections.indices {
@@ -702,23 +782,33 @@ final class ForceClickSelectionPopup {
             section.titleField.frame = NSRect(
                 x: titleX,
                 y: y,
-                width: max(0, availableWidth - sectionButtonSize - sectionButtonSpacing),
+                width: max(0, availableWidth - (sectionButtonSize * 2) - (sectionButtonSpacing * 2)),
                 height: ceil(titleSize.height)
             )
-            let buttonX = paddingLeft + availableWidth - sectionButtonSize
+            let collapseButtonX = paddingLeft + availableWidth - sectionButtonSize
+            let copyButtonX = collapseButtonX - sectionButtonSpacing - sectionButtonSize
             let buttonY = y + max(0, (ceil(titleSize.height) - sectionButtonSize) * 0.5)
-            section.copyButton.frame = NSRect(
-                x: buttonX,
+            section.collapseButton.frame = NSRect(
+                x: collapseButtonX,
                 y: buttonY,
                 width: sectionButtonSize,
                 height: sectionButtonSize
             )
-            y -= titleTextSpacing + max(ceil(textSizeValue.height), 16)
+            section.copyButton.frame = NSRect(
+                x: copyButtonX,
+                y: buttonY,
+                width: sectionButtonSize,
+                height: sectionButtonSize
+            )
+            let isCollapsed = section.isCollapsed
+            let textHeight = isCollapsed ? 0 : max(ceil(textSizeValue.height), 16)
+            let spacing = isCollapsed ? 0 : titleTextSpacing
+            y -= spacing + textHeight
             section.textField.frame = NSRect(
                 x: textX,
                 y: y,
                 width: availableWidth,
-                height: max(ceil(textSizeValue.height), 16)
+                height: textHeight
             )
         }
 
@@ -846,7 +936,10 @@ final class ForceClickSelectionPopup {
         let dots = String(repeating: "·", count: loadingDotCount)
         let loadingText = UIStrings.Popup.processingPrefix + dots
         for index in functionSections.indices where functionSections[index].isLoading {
-            functionSections[index].textField.stringValue = loadingText
+            let existing = functionSections[index].textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if existing.isEmpty {
+                functionSections[index].textField.stringValue = loadingText
+            }
         }
     }
 
@@ -957,6 +1050,12 @@ final class ForceClickSelectionPopup {
         }
     }
 
+    @objc private func handleToggleOriginalCollapse() {
+        hideTooltip()
+        let newValue = !originalIsCollapsed
+        setOriginalCollapsed(isCollapsed: newValue, persist: true)
+    }
+
     @objc private func handleCopySection(_ sender: HoverableIconButton) {
         hideTooltip()
         guard let section = functionSections.first(where: { $0.copyButton === sender }),
@@ -967,6 +1066,15 @@ final class ForceClickSelectionPopup {
         if copyToPasteboard(text) {
             showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: sender)
         }
+    }
+
+    @objc private func handleToggleSectionCollapse(_ sender: HoverableIconButton) {
+        hideTooltip()
+        guard let index = functionSections.firstIndex(where: { $0.collapseButton === sender }) else {
+            return
+        }
+        let newValue = !functionSections[index].isCollapsed
+        setSectionCollapsed(index: index, isCollapsed: newValue, persist: true)
     }
 
     @objc private func handleOpenPreferences() {
@@ -1001,6 +1109,47 @@ final class ForceClickSelectionPopup {
         button.setAccessibilityLabel(toolTip)
         button.focusRingType = .none
         return button
+    }
+
+    private func updateOriginalCollapseButton() {
+        let toolTip = originalIsCollapsed ? UIStrings.Popup.expandResult : UIStrings.Popup.collapseResult
+        let symbolName = originalIsCollapsed ? "chevron.right" : "chevron.down"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
+        image?.isTemplate = true
+        originalCollapseButton.image = image
+        originalCollapseButton.tooltipText = toolTip
+        originalCollapseButton.setAccessibilityLabel(toolTip)
+    }
+
+    private func setOriginalCollapsed(isCollapsed: Bool, persist: Bool) {
+        originalIsCollapsed = isCollapsed
+        originalTextField.isHidden = isCollapsed
+        updateOriginalCollapseButton()
+        if persist {
+            AppPreferences.setPopupOriginalCollapsed(isCollapsed)
+        }
+        refreshLayout()
+    }
+
+    private func updateCollapseButton(for index: Int, isCollapsed: Bool? = nil) {
+        let collapsed = isCollapsed ?? functionSections[index].isCollapsed
+        let toolTip = collapsed ? UIStrings.Popup.expandResult : UIStrings.Popup.collapseResult
+        let symbolName = collapsed ? "chevron.right" : "chevron.down"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
+        image?.isTemplate = true
+        functionSections[index].collapseButton.image = image
+        functionSections[index].collapseButton.tooltipText = toolTip
+        functionSections[index].collapseButton.setAccessibilityLabel(toolTip)
+    }
+
+    private func setSectionCollapsed(index: Int, isCollapsed: Bool, persist: Bool) {
+        functionSections[index].isCollapsed = isCollapsed
+        functionSections[index].textField.isHidden = isCollapsed
+        updateCollapseButton(for: index, isCollapsed: isCollapsed)
+        if persist {
+            AppPreferences.setPopupFunctionCollapsed(functionSections[index].function.id, isCollapsed: isCollapsed)
+        }
+        refreshLayout()
     }
 
     private func ensureMonitors() {}

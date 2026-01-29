@@ -65,6 +65,8 @@ enum UIStrings {
         case popupEmptyResult
         case popupEmptyPrompt
         case popupUntitledFunction
+        case popupCollapseResult
+        case popupExpandResult
         case preferencesTitle
         case preferencesDescription
         case preferencesTabGeneral
@@ -134,6 +136,8 @@ enum UIStrings {
         static var emptyResult: String { value(.popupEmptyResult) }
         static var emptyPrompt: String { value(.popupEmptyPrompt) }
         static var untitledFunction: String { value(.popupUntitledFunction) }
+        static var collapseResult: String { value(.popupCollapseResult) }
+        static var expandResult: String { value(.popupExpandResult) }
     }
 
     enum Preferences {
@@ -215,6 +219,8 @@ enum UIStrings {
             .popupEmptyResult: "Result is empty",
             .popupEmptyPrompt: "Prompt is empty",
             .popupUntitledFunction: "Untitled Function",
+            .popupCollapseResult: "Collapse Result",
+            .popupExpandResult: "Expand Result",
             .preferencesTitle: "Preferences",
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesTabGeneral: "General",
@@ -280,6 +286,8 @@ enum UIStrings {
             .popupEmptyResult: "结果为空",
             .popupEmptyPrompt: "提示语为空",
             .popupUntitledFunction: "未命名功能",
+            .popupCollapseResult: "收起结果",
+            .popupExpandResult: "展开结果",
             .preferencesTitle: "偏好设置",
             .preferencesDescription: "设置会自动保存。",
             .preferencesTabGeneral: "通用",
@@ -345,6 +353,8 @@ enum UIStrings {
             .popupEmptyResult: "結果が空です",
             .popupEmptyPrompt: "プロンプトが空です",
             .popupUntitledFunction: "無題の機能",
+            .popupCollapseResult: "結果を折りたたむ",
+            .popupExpandResult: "結果を展開",
             .preferencesTitle: "環境設定",
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesTabGeneral: "一般",

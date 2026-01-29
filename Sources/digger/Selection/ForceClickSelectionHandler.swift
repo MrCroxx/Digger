@@ -272,6 +272,13 @@ final class ForceClickSelectionHandler {
                             do {
                                 let stream = try await translator.runPromptStream(trimmedPrompt, text: trimmedText)
                                 var accumulated = ""
+                                await MainActor.run {
+                                    forceClickSelectionPopup.markStreamingStarted(
+                                        for: requestID,
+                                        functionID: function.id,
+                                        near: location
+                                    )
+                                }
                                 for try await delta in stream {
                                     guard !delta.isEmpty else {
                                         continue
