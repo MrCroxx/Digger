@@ -4,20 +4,34 @@ import Carbon
 import Foundation
 import os
 
-final class ForceClickSelectionHandler {
+final class ForceClickSelectionHandler: @unchecked Sendable {
     private let systemElement = AXUIElementCreateSystemWide()
     private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
     private let triggerCooldown: TimeInterval = 0.25
     private let selectionCacheLock = OSAllocatedUnfairLock<SelectionSnapshot?>(uncheckedState: nil)
     private let selectionCacheTTL: TimeInterval = 0.8
 
-    func handleForceClick() {
+    private struct PopupAnchor: Sendable {
+        let x: Double
+        let y: Double
+
+        init(point: CGPoint) {
+            x = Double(point.x)
+            y = Double(point.y)
+        }
+
+        var point: CGPoint {
+            CGPoint(x: x, y: y)
+        }
+    }
+
+    func handleForceClick() async {
         guard shouldHandleTrigger() else {
             return
         }
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             print(selectedText)
-            runFunctionsAndShow(text: selectedText)
+            await runFunctionsAndShow(text: selectedText)
             return
         }
 
@@ -29,7 +43,7 @@ final class ForceClickSelectionHandler {
             }
             if !cachedText.isEmpty {
                 print(cachedText)
-                runFunctionsAndShow(text: cachedText)
+                await runFunctionsAndShow(text: cachedText)
                 return
             }
         }
@@ -38,12 +52,12 @@ final class ForceClickSelectionHandler {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
                 print(fallbackText)
-                runFunctionsAndShow(text: fallbackText)
+                await runFunctionsAndShow(text: fallbackText)
             }
             return
         }
         print(text)
-        runFunctionsAndShow(text: text)
+        await runFunctionsAndShow(text: text)
     }
 
     func cacheSelectionBeforeMouseDown() {
@@ -215,7 +229,7 @@ final class ForceClickSelectionHandler {
         return nil
     }
 
-    private func runFunctionsAndShow(text: String) {
+    private func runFunctionsAndShow(text: String) async {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
             return
@@ -225,118 +239,155 @@ final class ForceClickSelectionHandler {
         }
         let requestID = UUID()
         let functions = PopupFunction.availableFunctions()
-        Task { @MainActor in
+        let anchor = PopupAnchor(point: location)
+        await MainActor.run {
             forceClickSelectionPopup.showLoading(
                 original: trimmedText,
-                near: location,
+                near: anchor.point,
                 requestID: requestID,
                 functions: functions
             )
         }
-        Task { [trimmedText, location, requestID, functions] in
-            guard let translator = OpenAITranslator() else {
-                let resultText = UIStrings.Translation.missingApiKey
-                for function in functions {
-                    print("\(function.title): \(resultText)")
-                    await MainActor.run {
-                        forceClickSelectionPopup.updateResult(
-                            resultText,
-                            for: requestID,
-                            functionID: function.id,
-                            near: location,
-                            isFinal: true
-                        )
-                    }
+        let apiKey = AppPreferences.apiKey().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
+            let resultText = UIStrings.Translation.missingApiKey
+            for function in functions {
+                print("\(function.title): \(resultText)")
+                await MainActor.run {
+                    forceClickSelectionPopup.updateResult(
+                        resultText,
+                        for: requestID,
+                        functionID: function.id,
+                        near: anchor.point,
+                        isFinal: true
+                    )
                 }
-                return
             }
+            return
+        }
 
-            await withTaskGroup(of: Void.self) { group in
-                for function in functions {
-                    group.addTask {
-                        let trimmedPrompt = function.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if trimmedPrompt.isEmpty {
+        await withTaskGroup(of: Void.self) { group in
+            for function in functions {
+                group.addTask {
+                    guard let translator = OpenAITranslator() else {
+                        let resultText = UIStrings.Translation.missingApiKey
+                        print("\(function.title): \(resultText)")
+                        await MainActor.run {
+                            forceClickSelectionPopup.updateResult(
+                                resultText,
+                                for: requestID,
+                                functionID: function.id,
+                                near: anchor.point,
+                                isFinal: true
+                            )
+                        }
+                        return
+                    }
+                    let trimmedPrompt = function.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedPrompt.isEmpty {
+                        await MainActor.run {
+                            forceClickSelectionPopup.updateResult(
+                                UIStrings.Popup.emptyPrompt,
+                                for: requestID,
+                                functionID: function.id,
+                                near: anchor.point,
+                                isFinal: true
+                            )
+                        }
+                        return
+                    }
+
+                    if AppPreferences.translationStreamingEnabled() {
+                        do {
+                            let stream = try await translator.runPromptStream(trimmedPrompt, text: trimmedText)
+                            var accumulated = ""
+                            var pending = ""
+                            let updateInterval: TimeInterval = 0.02
+                            let minFlushCharacters = 48
+                            var lastUpdate = ProcessInfo.processInfo.systemUptime
                             await MainActor.run {
-                                forceClickSelectionPopup.updateResult(
-                                    UIStrings.Popup.emptyPrompt,
+                                forceClickSelectionPopup.markStreamingStarted(
                                     for: requestID,
                                     functionID: function.id,
-                                    near: location,
-                                    isFinal: true
+                                    near: anchor.point
                                 )
                             }
-                            return
-                        }
-
-                        if AppPreferences.translationStreamingEnabled() {
-                            do {
-                                let stream = try await translator.runPromptStream(trimmedPrompt, text: trimmedText)
-                                var accumulated = ""
-                                await MainActor.run {
-                                    forceClickSelectionPopup.markStreamingStarted(
-                                        for: requestID,
-                                        functionID: function.id,
-                                        near: location
-                                    )
+                            for try await delta in stream {
+                                guard !delta.isEmpty else {
+                                    continue
                                 }
-                                for try await delta in stream {
-                                    guard !delta.isEmpty else {
-                                        continue
-                                    }
-                                    accumulated += delta
+                                pending += delta
+                                let now = ProcessInfo.processInfo.systemUptime
+                                if pending.count >= minFlushCharacters || now - lastUpdate >= updateInterval {
+                                    accumulated += pending
+                                    pending = ""
+                                    lastUpdate = now
                                     await MainActor.run {
                                         forceClickSelectionPopup.updateResult(
                                             accumulated,
                                             for: requestID,
                                             functionID: function.id,
-                                            near: location,
+                                            near: anchor.point,
                                             isFinal: false
                                         )
                                     }
                                 }
-                                let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let resultText = trimmed.isEmpty ? UIStrings.Popup.emptyResult : trimmed
-                                print("\(function.title): \(resultText)")
+                            }
+                            if !pending.isEmpty {
+                                accumulated += pending
+                                pending = ""
                                 await MainActor.run {
                                     forceClickSelectionPopup.updateResult(
-                                        resultText,
+                                        accumulated,
                                         for: requestID,
                                         functionID: function.id,
-                                        near: location,
-                                        isFinal: true
-                                    )
-                                }
-                            } catch {
-                                let resultText = UIStrings.Translation.failed
-                                print("\(function.title): \(resultText)")
-                                await MainActor.run {
-                                    forceClickSelectionPopup.updateResult(
-                                        resultText,
-                                        for: requestID,
-                                        functionID: function.id,
-                                        near: location,
-                                        isFinal: true
+                                        near: anchor.point,
+                                        isFinal: false
                                     )
                                 }
                             }
-                        } else {
-                            let resultText: String
-                            do {
-                                let result = try await translator.runPrompt(trimmedPrompt, text: trimmedText)
-                                resultText = result.isEmpty ? UIStrings.Popup.emptyResult : result
-                            } catch {
-                                resultText = UIStrings.Translation.failed
-                            }
+                            let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let resultText = trimmed.isEmpty ? UIStrings.Popup.emptyResult : trimmed
                             print("\(function.title): \(resultText)")
                             await MainActor.run {
                                 forceClickSelectionPopup.updateResult(
                                     resultText,
                                     for: requestID,
                                     functionID: function.id,
-                                    near: location,
+                                    near: anchor.point,
                                     isFinal: true
                                 )
                             }
+                        } catch {
+                            let resultText = UIStrings.Translation.failed
+                            print("\(function.title): \(resultText)")
+                            await MainActor.run {
+                                forceClickSelectionPopup.updateResult(
+                                    resultText,
+                                    for: requestID,
+                                    functionID: function.id,
+                                    near: anchor.point,
+                                    isFinal: true
+                                )
+                            }
+                        }
+                    } else {
+                        let resultText: String
+                        do {
+                            let result = try await translator.runPrompt(trimmedPrompt, text: trimmedText)
+                            resultText = result.isEmpty ? UIStrings.Popup.emptyResult : result
+                        } catch {
+                            resultText = UIStrings.Translation.failed
+                        }
+                        print("\(function.title): \(resultText)")
+                        await MainActor.run {
+                            forceClickSelectionPopup.updateResult(
+                                resultText,
+                                for: requestID,
+                                functionID: function.id,
+                                near: anchor.point,
+                                isFinal: true
+                            )
                         }
                     }
                 }
@@ -444,6 +495,7 @@ final class ForceClickSelectionHandler {
 
         return nsContext.substring(with: NSRange(location: wordRange.location, length: wordRange.length))
     }
+
 
     private func copySelectionText(selectWordIfNeeded: Bool) -> String? {
         let pasteboard = NSPasteboard.general

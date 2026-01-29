@@ -36,7 +36,10 @@ final class EventTapController {
                 }
             }
             if !isPopupOrPreferencesFocused, shouldTriggerShortcut(event: event) {
-                selectionHandler.handleForceClick()
+                let handler = selectionHandler
+                Task {
+                    await handler.handleForceClick()
+                }
                 return nil
             }
         case .leftMouseDown, .rightMouseDown:

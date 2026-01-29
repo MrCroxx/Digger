@@ -276,6 +276,17 @@ struct PreferencesView: View {
                 Text(UIStrings.Preferences.customFunctionsDescription)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
+                HStack(spacing: 12) {
+                    Text(UIStrings.Preferences.functionTitleLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 160, alignment: .leading)
+                    Text(UIStrings.Preferences.functionPromptLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Color.clear
+                        .frame(width: 24, height: 1)
+                }
                 List(selection: $viewModel.selectedFunctionID) {
                     ForEach(viewModel.customFunctions.indices, id: \.self) { index in
                         HStack(spacing: 12) {
@@ -548,7 +559,7 @@ private extension View {
             .textFieldStyle(.plain)
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
-            .background(Color.white)
+            .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)

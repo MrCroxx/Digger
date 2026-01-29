@@ -1,6 +1,6 @@
 import Foundation
 
-struct PopupFunction: Identifiable, Equatable {
+struct PopupFunction: Identifiable, Equatable, Sendable {
     let id: UUID
     let title: String
     let prompt: String
