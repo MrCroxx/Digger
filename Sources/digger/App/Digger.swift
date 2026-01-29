@@ -13,6 +13,9 @@ private struct MainMenuReferences {
     let copyItem: NSMenuItem
     let pasteItem: NSMenuItem
     let selectAllItem: NSMenuItem
+    let windowMenuItem: NSMenuItem
+    let windowMenu: NSMenu
+    let closeItem: NSMenuItem
 }
 
 @main
@@ -123,6 +126,17 @@ struct Digger {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        let windowMenuItem = NSMenuItem(title: UIStrings.Menu.window, action: nil, keyEquivalent: "")
+        let windowMenu = NSMenu(title: UIStrings.Menu.window)
+        let closeItem = NSMenuItem(
+            title: UIStrings.Menu.close,
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        windowMenu.addItem(closeItem)
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
         mainMenuReferences = MainMenuReferences(
             appMenuItem: appMenuItem,
             quitItem: quitItem,
@@ -133,7 +147,10 @@ struct Digger {
             cutItem: cutItem,
             copyItem: copyItem,
             pasteItem: pasteItem,
-            selectAllItem: selectAllItem
+            selectAllItem: selectAllItem,
+            windowMenuItem: windowMenuItem,
+            windowMenu: windowMenu,
+            closeItem: closeItem
         )
 
         return mainMenu
@@ -154,5 +171,8 @@ struct Digger {
         refs.copyItem.title = UIStrings.Menu.copy
         refs.pasteItem.title = UIStrings.Menu.paste
         refs.selectAllItem.title = UIStrings.Menu.selectAll
+        refs.windowMenuItem.title = UIStrings.Menu.window
+        refs.windowMenu.title = UIStrings.Menu.window
+        refs.closeItem.title = UIStrings.Menu.close
     }
 }

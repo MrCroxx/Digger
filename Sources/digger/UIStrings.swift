@@ -98,6 +98,8 @@ enum UIStrings {
         case menuPaste
         case menuSelectAll
         case menuAppTitle
+        case menuWindow
+        case menuClose
     }
 
     enum Translation {
@@ -161,6 +163,8 @@ enum UIStrings {
         static var paste: String { value(.menuPaste) }
         static var selectAll: String { value(.menuSelectAll) }
         static var appTitle: String { value(.menuAppTitle) }
+        static var window: String { value(.menuWindow) }
+        static var close: String { value(.menuClose) }
     }
 
     static func value(_ key: Key) -> String {
@@ -223,7 +227,9 @@ enum UIStrings {
             .menuCopy: "Copy",
             .menuPaste: "Paste",
             .menuSelectAll: "Select All",
-            .menuAppTitle: "Digger"
+            .menuAppTitle: "Digger",
+            .menuWindow: "Window",
+            .menuClose: "Close"
         ],
         .chineseSimplified: [
             .translationEmptyResult: "翻译结果为空",
@@ -276,7 +282,9 @@ enum UIStrings {
             .menuCopy: "复制",
             .menuPaste: "粘贴",
             .menuSelectAll: "全选",
-            .menuAppTitle: "Digger"
+            .menuAppTitle: "Digger",
+            .menuWindow: "窗口",
+            .menuClose: "关闭"
         ],
         .japanese: [
             .translationEmptyResult: "翻訳結果が空です",
@@ -329,7 +337,9 @@ enum UIStrings {
             .menuCopy: "コピー",
             .menuPaste: "貼り付け",
             .menuSelectAll: "すべて選択",
-            .menuAppTitle: "Digger"
+            .menuAppTitle: "Digger",
+            .menuWindow: "ウインドウ",
+            .menuClose: "閉じる"
         ]
     ]
 }

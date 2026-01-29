@@ -224,13 +224,10 @@ struct PreferencesView: View {
                 Text(UIStrings.Preferences.customFunctionsTitle)
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button(UIStrings.Preferences.addFunction) {
+                Button("+") {
                     addFunction()
                 }
-                Button(UIStrings.Preferences.removeFunction) {
-                    removeSelectedFunction()
-                }
-                .disabled(viewModel.selectedFunctionID == nil)
+                .frame(width: 24)
             }
             Text(UIStrings.Preferences.customFunctionsDescription)
                 .font(.system(size: 12))
@@ -249,6 +246,12 @@ struct PreferencesView: View {
                             text: $viewModel.customFunctions[index].prompt
                         )
                         .textFieldStyle(.roundedBorder)
+                        Button("-") {
+                            removeFunction(viewModel.customFunctions[index].id)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .frame(width: 24)
                     }
                     .tag(viewModel.customFunctions[index].id)
                 }
@@ -301,13 +304,15 @@ struct PreferencesView: View {
         viewModel.selectedFunctionID = newFunction.id
     }
 
-    private func removeSelectedFunction() {
-        guard let selectedID = viewModel.selectedFunctionID,
-              let index = viewModel.customFunctions.firstIndex(where: { $0.id == selectedID }) else {
+    private func removeFunction(_ id: UUID) {
+        guard let index = viewModel.customFunctions.firstIndex(where: { $0.id == id }) else {
             return
         }
+        let wasSelected = viewModel.selectedFunctionID == id
         viewModel.customFunctions.remove(at: index)
-        viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
+        if wasSelected {
+            viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
+        }
     }
 
     private func applyField(_ field: Field) {
