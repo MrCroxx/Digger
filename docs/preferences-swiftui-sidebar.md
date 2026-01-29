@@ -1,79 +1,74 @@
-# Preferences SwiftUI Sidebar 改造
+# Preferences Sidebar 视觉与布局调整
 
-本文记录本次 session 中对 Preferences 的 SwiftUI 原生侧边栏实现，以及关键实现原理。
+本文记录本次 session 中对 Preferences 页面布局与视觉的关键改动，目标是移除可折叠的 sidebar 行为，保持功能不变，并统一风格与对齐。
 
 ## 目标
 
-- 使用 SwiftUI 的官方方式实现 macOS 原生侧边栏样式。
-- 保持原有 Preferences 行为不变（自动保存、设置项回调、快捷键录入、自定义功能列表等）。
+- 不使用 `NavigationSplitView`，避免系统 sidebar 的 collapse toggle。
+- 左右分栏用竖线分隔，整体保持系统灰色背景。
+- 右侧内容标题固定在顶部，并用横线与内容分隔。
+- 所有输入框统一样式，确保标题与控件对齐且不换行。
+- 将“Settings are saved automatically”提示作为全局提示放在左侧底部。
 
-## 关键组件
+## 关键实现
 
-- `NavigationSplitView`：负责左右分栏结构。
-- `List` + `.listStyle(.sidebar)`：声明左侧为 Sidebar 风格列表。
+### 1) 自定义左右分栏
+
+使用 `HStack` 作为容器：
+
+- 左侧：`List`（sidebar 样式）
+- 中间：`Divider()`
+- 右侧：`detailView`
+
+这样不会触发系统的 sidebar toggle，同时保留原有 tab 切换逻辑。
+
+### 2) 统一灰色背景
+
+- 左侧与右侧统一使用 `Color(nsColor: .windowBackgroundColor)`。
+- `List` 使用 `scrollContentBackground(.hidden)` + 统一背景，避免提示区域颜色不一致。
+
+### 3) 右侧标题与内容分隔
+
+- 标题紧贴顶部（无顶部 padding）。
+- 标题下方 `Divider()`，并增加轻微上下间距。
+- 内容整体放在标题下方，`padding(.top, 16)`。
+
+### 4) 输入框统一样式
+
+新增 `preferenceInputStyle()` 统一输入框外观：
+
+- 白色底
+- 轻微圆角
+- 细分隔线描边
+
+并应用到所有 `TextField`/`SecureField`/`ShortcutRecorderView`。
+
+### 5) 标题与输入框对齐
+
+`LabeledContent` 的 label 使用固定宽度 `preferenceLabel()`，确保：
+
+- 标题不换行
+- 标题列统一对齐
+
+### 6) 全局提示位置
+
+“Settings are saved automatically” 移至左侧栏底部，作为全局提示：
+
+- 视觉更明确地表达该提示作用于全局
+- 与左侧背景统一，避免突兀
 
 ## 文件变更
 
-- 新增 SwiftUI 视图：`Sources/digger/Preferences/PreferencesView.swift`
-- 新增 ViewModel：`Sources/digger/Preferences/PreferencesViewModel.swift`
-- 用 SwiftUI 替换 AppKit Preferences 窗口：`Sources/digger/Preferences/PreferencesWindowController.swift`
-
-## 实现原理
-
-### 1) 侧边栏结构
-
-`PreferencesView` 使用 `NavigationSplitView` 作为根布局：
-
-- 左侧：`List` 加 `.listStyle(.sidebar)`，列出各 tab（General/Popup/Functions/Advanced/API）。
-- 右侧：根据 `selection` 切换具体设置页面内容。
-
-这组合会触发系统默认的 Sidebar 样式（与 Finder 类似）。
-
-### 2) ViewModel 负责数据同步
-
-`PreferencesViewModel` 是 `ObservableObject`，将 `AppPreferences` 中的设置映射成 `@Published` 字段。
-
-- 打开窗口时 `refresh()`，保证 UI 与当前偏好一致。
-- 设置项更新时，通过 `onChange` 把变更写回 `AppPreferences`。
-
-这样既保持自动保存，也能复用既有偏好存储逻辑。
-
-### 3) 各页面布局与行为
-
-- 使用 `Form + LabeledContent` 实现系统风格设置项布局。
-- 数值输入依旧做格式化与边界校验（字体大小、延迟、窗口大小、Force Click 参数等）。
-- 语言切换后，回调外层进行 popup 和菜单文案刷新。
-
-### 4) 快捷键录入保持原行为
-
-原来的 `ShortcutRecorderField` 是 AppKit 控件，SwiftUI 通过 `NSViewRepresentable` 包装为 `ShortcutRecorderView`：
-
-- 复用原来的快捷键捕获逻辑。
-- 通过 binding 同步当前快捷键。
-
-### 5) 自定义功能列表
-
-自定义功能列表使用 SwiftUI `List` 展示：
-
-- 行内 `TextField` 编辑 title 和 prompt。
-- `Add`/`Remove` 操作同步 `AppPreferences`。
-- 使用 selection 保持当前选中行。
-
-## 入口与窗口承载
-
-`PreferencesWindowController` 仍作为入口，但内容改为 `NSHostingController`：
-
-- 通过 `PreferencesView` 渲染 SwiftUI 界面。
-- 保留原窗口风格参数（尺寸、标题、透明标题栏、拖动行为等）。
+- `Sources/digger/Preferences/PreferencesView.swift`
+  - 替换 `NavigationSplitView` 为 `HStack + Divider`
+  - 右侧标题/分割线/内容布局调整
+  - 统一输入框样式与 label 对齐策略
+  - 全局提示移动到左侧底部
+- `Sources/digger/Preferences/PreferencesWindowController.swift`
+  - 调整窗口初始宽度以保证标题单行显示
 
 ## 行为对齐点
 
-- 所有设置项仍然自动保存。
-- Force Click 参数变更会即时回调到监控逻辑。
-- Popup 字号与布局变更会触发回调更新。
-- 自定义功能列表保持原先的数据结构和存储方式。
-
-## 可能的后续优化
-
-- 为 Functions 列表增加更强的编辑体验（多行 prompt 或自适应高度）。
-- 对数值输入添加更明确的格式提示或单位说明。
+- 所有设置仍自动保存
+- popup/force click/自定义函数等回调逻辑保持不变
+- tab 切换与选中逻辑不变

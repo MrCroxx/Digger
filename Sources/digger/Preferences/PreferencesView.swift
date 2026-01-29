@@ -63,17 +63,29 @@ struct PreferencesView: View {
     @State private var lastFocusedField: Field?
 
     var body: some View {
-        NavigationSplitView {
-            List(PreferencesTab.allCases, selection: $selection) { tab in
-                Label(tab.title, systemImage: tab.systemImage)
-                    .tag(tab)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                List(PreferencesTab.allCases, selection: $selection) { tab in
+                    Label(tab.title, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+                .listStyle(.sidebar)
+                .applySidebarListBackground()
+                Text(UIStrings.Preferences.description)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
             }
-            .listStyle(.sidebar)
-            .frame(minWidth: 200)
-        } detail: {
+            .frame(width: 220)
+            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
             detailView
+                .frame(minWidth: 560, maxWidth: .infinity)
         }
-        .frame(minWidth: 720, minHeight: 460)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 800, minHeight: 460)
         .onChange(of: focusedField) { newValue in
             if let lastFocusedField, lastFocusedField != newValue {
                 applyField(lastFocusedField)
@@ -125,64 +137,66 @@ struct PreferencesView: View {
     }
 
     private var detailView: some View {
-        Group {
-            switch selection ?? .general {
-            case .general:
-                generalPane
-            case .popup:
-                popupPane
-            case .functions:
-                functionsPane
-            case .advanced:
-                advancedPane
-            case .api:
-                apiPane
+        VStack(alignment: .leading, spacing: 0) {
+            Text((selection ?? .general).title)
+                .font(.system(size: 18, weight: .semibold))
+            Divider()
+                .padding(.vertical, 6)
+            Group {
+                switch selection ?? .general {
+                case .general:
+                    generalPane
+                case .popup:
+                    popupPane
+                case .functions:
+                    functionsPane
+                case .advanced:
+                    advancedPane
+                case .api:
+                    apiPane
+                }
             }
+            .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(24)
-    }
-
-    private var headerView: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(UIStrings.Preferences.title)
-                .font(.system(size: 18, weight: .semibold))
-            Text(UIStrings.Preferences.description)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var generalPane: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            headerView
-            Form {
-                LabeledContent(UIStrings.Preferences.languageLabel) {
-                    Picker("", selection: $viewModel.language) {
-                        ForEach(AppLanguage.allCases, id: \.self) { language in
-                            Text(language.displayName).tag(language)
-                        }
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent {
+                Picker("", selection: $viewModel.language) {
+                    ForEach(AppLanguage.allCases, id: \.self) { language in
+                        Text(language.displayName).tag(language)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 220)
                 }
-                LabeledContent(UIStrings.Preferences.targetLanguageLabel) {
-                    Picker("", selection: $viewModel.targetLanguage) {
-                        ForEach(TranslationTargetLanguage.allCases, id: \.self) { language in
-                            Text(language.displayName).tag(language)
-                        }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.languageLabel)
+            }
+            LabeledContent {
+                Picker("", selection: $viewModel.targetLanguage) {
+                    ForEach(TranslationTargetLanguage.allCases, id: \.self) { language in
+                        Text(language.displayName).tag(language)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 220)
                 }
-                Toggle(UIStrings.Preferences.streamingLabel, isOn: $viewModel.streamingEnabled)
+                .labelsHidden()
+                .frame(maxWidth: 220)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.targetLanguageLabel)
+            }
+            Toggle(isOn: $viewModel.streamingEnabled) {
+                preferenceLabel(UIStrings.Preferences.streamingLabel)
             }
         }
     }
 
     private var popupPane: some View {
-        Form {
-            LabeledContent(UIStrings.Preferences.popupFontSizeLabel) {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent {
                 HStack(spacing: 12) {
                     Slider(
                         value: $viewModel.popupFontSize,
@@ -193,33 +207,44 @@ struct PreferencesView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 54, alignment: .trailing)
                 }
+            } label: {
+                preferenceLabel(UIStrings.Preferences.popupFontSizeLabel)
             }
-            LabeledContent(UIStrings.Preferences.popupTooltipDelayLabel) {
+            LabeledContent {
                 TextField("", text: $viewModel.popupTooltipDelayText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupTooltipDelay)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.popupTooltipDelayLabel)
             }
-            LabeledContent(UIStrings.Preferences.popupShortcutLabel) {
+            LabeledContent {
                 ShortcutRecorderView(
                     shortcut: $viewModel.popupShortcut,
                     placeholder: UIStrings.Preferences.popupShortcutPlaceholder
                 ) { newShortcut in
                     AppPreferences.setPopupShortcut(newShortcut)
                 }
+                .preferenceInputStyle()
                 .frame(width: 180)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.popupShortcutLabel)
             }
-            LabeledContent("POPUP_MAX_WIDTH") {
+            LabeledContent {
                 TextField("", text: $viewModel.popupMaxWidthText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxWidth)
+            } label: {
+                preferenceLabel("POPUP_MAX_WIDTH")
             }
-            LabeledContent("POPUP_MAX_HEIGHT") {
+            LabeledContent {
                 TextField("", text: $viewModel.popupMaxHeightText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxHeight)
+            } label: {
+                preferenceLabel("POPUP_MAX_HEIGHT")
             }
         }
     }
@@ -229,15 +254,15 @@ struct PreferencesView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(UIStrings.Preferences.systemPromptTitle)
                     .font(.system(size: 13, weight: .semibold))
-                Text(UIStrings.Preferences.systemPromptDescription)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                TextField(
-                    UIStrings.Preferences.systemPromptPlaceholder,
-                    text: $viewModel.systemPrompt
-                )
-                .textFieldStyle(.roundedBorder)
-            }
+            Text(UIStrings.Preferences.systemPromptDescription)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            TextField(
+                UIStrings.Preferences.systemPromptPlaceholder,
+                text: $viewModel.systemPrompt
+            )
+            .preferenceInputStyle()
+        }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(UIStrings.Preferences.customFunctionsTitle)
@@ -258,13 +283,13 @@ struct PreferencesView: View {
                                 UIStrings.Preferences.functionTitlePlaceholder,
                                 text: $viewModel.customFunctions[index].title
                             )
-                            .textFieldStyle(.roundedBorder)
+                            .preferenceInputStyle()
                             .frame(width: 160)
                             TextField(
                                 UIStrings.Preferences.functionPromptPlaceholder,
                                 text: $viewModel.customFunctions[index].prompt
                             )
-                            .textFieldStyle(.roundedBorder)
+                            .preferenceInputStyle()
                             Button("-") {
                                 removeFunction(viewModel.customFunctions[index].id)
                             }
@@ -276,49 +301,62 @@ struct PreferencesView: View {
                     }
                 }
                 .frame(minHeight: 180)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
     }
 
     private var advancedPane: some View {
-        Form {
-            LabeledContent("FORCE_CLICK_PRESSURE_THRESHOLD") {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent {
                 TextField("", text: $viewModel.pressureThresholdText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .pressureThreshold)
+            } label: {
+                preferenceLabel("FORCE_CLICK_PRESSURE_THRESHOLD")
             }
-            LabeledContent("FORCE_CLICK_PRESSURE_DELTA") {
+            LabeledContent {
                 TextField("", text: $viewModel.pressureDeltaText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .pressureDelta)
+            } label: {
+                preferenceLabel("FORCE_CLICK_PRESSURE_DELTA")
             }
-            LabeledContent("FORCE_CLICK_BASELINE_WINDOW_MS") {
+            LabeledContent {
                 TextField("", text: $viewModel.baselineWindowText)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .baselineWindow)
+            } label: {
+                preferenceLabel("FORCE_CLICK_BASELINE_WINDOW_MS")
             }
         }
     }
 
     private var apiPane: some View {
-        Form {
-            LabeledContent("OPENAI_API_KEY") {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent {
                 SecureField("", text: $viewModel.apiKey)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 260)
+            } label: {
+                preferenceLabel("OPENAI_API_KEY")
             }
-            LabeledContent("OPENAI_ENDPOINT") {
+            LabeledContent {
                 TextField("", text: $viewModel.endpoint)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 260)
+            } label: {
+                preferenceLabel("OPENAI_ENDPOINT")
             }
-            LabeledContent("OPENAI_MODEL") {
+            LabeledContent {
                 TextField("", text: $viewModel.model)
-                    .textFieldStyle(.roundedBorder)
+                    .preferenceInputStyle()
                     .frame(width: 260)
+            } label: {
+                preferenceLabel("OPENAI_MODEL")
             }
             HStack(spacing: 12) {
                 Button(UIStrings.Preferences.apiTestLabel) {
@@ -502,4 +540,37 @@ struct ShortcutRecorderView: NSViewRepresentable {
             nsView.currentShortcut = shortcut
         }
     }
+}
+
+private extension View {
+    func preferenceInputStyle() -> some View {
+        self
+            .textFieldStyle(.plain)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor))
+            )
+    }
+
+    @ViewBuilder
+    func applySidebarListBackground() -> some View {
+        if #available(macOS 13.0, *) {
+            self
+                .scrollContentBackground(.hidden)
+                .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            self
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+}
+
+private func preferenceLabel(_ text: String) -> some View {
+    Text(text)
+        .lineLimit(1)
+        .frame(width: 220, alignment: .leading)
 }
