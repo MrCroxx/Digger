@@ -10,20 +10,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
     private let triggerCooldown: TimeInterval = 0.25
     private let selectionCacheLock = OSAllocatedUnfairLock<SelectionSnapshot?>(uncheckedState: nil)
     private let selectionCacheTTL: TimeInterval = 0.8
-
-    private struct PopupAnchor: Sendable {
-        let x: Double
-        let y: Double
-
-        init(point: CGPoint) {
-            x = Double(point.x)
-            y = Double(point.y)
-        }
-
-        var point: CGPoint {
-            CGPoint(x: x, y: y)
-        }
-    }
+    private let popupRunner = PopupFunctionRunner()
 
     func handleForceClick() async {
         guard shouldHandleTrigger() else {
@@ -31,7 +18,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
         }
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             print(selectedText)
-            await runFunctionsAndShow(text: selectedText)
+            await popupRunner.run(text: selectedText)
             return
         }
 
@@ -43,7 +30,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             }
             if !cachedText.isEmpty {
                 print(cachedText)
-                await runFunctionsAndShow(text: cachedText)
+                await popupRunner.run(text: cachedText)
                 return
             }
         }
@@ -52,12 +39,12 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
                 print(fallbackText)
-                await runFunctionsAndShow(text: fallbackText)
+                await popupRunner.run(text: fallbackText)
             }
             return
         }
         print(text)
-        await runFunctionsAndShow(text: text)
+        await popupRunner.run(text: text)
     }
 
     func cacheSelectionBeforeMouseDown() {
@@ -227,172 +214,6 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
         }
 
         return nil
-    }
-
-    private func runFunctionsAndShow(text: String) async {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
-            return
-        }
-        guard let location = currentMouseLocation() else {
-            return
-        }
-        let requestID = UUID()
-        let functions = PopupFunction.availableFunctions()
-        let anchor = PopupAnchor(point: location)
-        await MainActor.run {
-            forceClickSelectionPopup.showLoading(
-                original: trimmedText,
-                near: anchor.point,
-                requestID: requestID,
-                functions: functions
-            )
-        }
-        let apiKey = AppPreferences.apiKey().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !apiKey.isEmpty else {
-            let resultText = UIStrings.Translation.missingApiKey
-            for function in functions {
-                print("\(function.title): \(resultText)")
-                await MainActor.run {
-                    forceClickSelectionPopup.updateResult(
-                        resultText,
-                        for: requestID,
-                        functionID: function.id,
-                        near: anchor.point,
-                        isFinal: true
-                    )
-                }
-            }
-            return
-        }
-
-        await withTaskGroup(of: Void.self) { group in
-            for function in functions {
-                group.addTask {
-                    guard let translator = OpenAITranslator() else {
-                        let resultText = UIStrings.Translation.missingApiKey
-                        print("\(function.title): \(resultText)")
-                        await MainActor.run {
-                            forceClickSelectionPopup.updateResult(
-                                resultText,
-                                for: requestID,
-                                functionID: function.id,
-                                near: anchor.point,
-                                isFinal: true
-                            )
-                        }
-                        return
-                    }
-                    let trimmedPrompt = function.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmedPrompt.isEmpty {
-                        await MainActor.run {
-                            forceClickSelectionPopup.updateResult(
-                                UIStrings.Popup.emptyPrompt,
-                                for: requestID,
-                                functionID: function.id,
-                                near: anchor.point,
-                                isFinal: true
-                            )
-                        }
-                        return
-                    }
-
-                    if AppPreferences.translationStreamingEnabled() {
-                        do {
-                            let stream = try await translator.runPromptStream(trimmedPrompt, text: trimmedText)
-                            var accumulated = ""
-                            var pending = ""
-                            let updateInterval: TimeInterval = 0.02
-                            let minFlushCharacters = 48
-                            var lastUpdate = ProcessInfo.processInfo.systemUptime
-                            await MainActor.run {
-                                forceClickSelectionPopup.markStreamingStarted(
-                                    for: requestID,
-                                    functionID: function.id,
-                                    near: anchor.point
-                                )
-                            }
-                            for try await delta in stream {
-                                guard !delta.isEmpty else {
-                                    continue
-                                }
-                                pending += delta
-                                let now = ProcessInfo.processInfo.systemUptime
-                                if pending.count >= minFlushCharacters || now - lastUpdate >= updateInterval {
-                                    accumulated += pending
-                                    pending = ""
-                                    lastUpdate = now
-                                    await MainActor.run {
-                                        forceClickSelectionPopup.updateResult(
-                                            accumulated,
-                                            for: requestID,
-                                            functionID: function.id,
-                                            near: anchor.point,
-                                            isFinal: false
-                                        )
-                                    }
-                                }
-                            }
-                            if !pending.isEmpty {
-                                accumulated += pending
-                                pending = ""
-                                await MainActor.run {
-                                    forceClickSelectionPopup.updateResult(
-                                        accumulated,
-                                        for: requestID,
-                                        functionID: function.id,
-                                        near: anchor.point,
-                                        isFinal: false
-                                    )
-                                }
-                            }
-                            let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let resultText = trimmed.isEmpty ? UIStrings.Popup.emptyResult : trimmed
-                            print("\(function.title): \(resultText)")
-                            await MainActor.run {
-                                forceClickSelectionPopup.updateResult(
-                                    resultText,
-                                    for: requestID,
-                                    functionID: function.id,
-                                    near: anchor.point,
-                                    isFinal: true
-                                )
-                            }
-                        } catch {
-                            let resultText = UIStrings.Translation.failed
-                            print("\(function.title): \(resultText)")
-                            await MainActor.run {
-                                forceClickSelectionPopup.updateResult(
-                                    resultText,
-                                    for: requestID,
-                                    functionID: function.id,
-                                    near: anchor.point,
-                                    isFinal: true
-                                )
-                            }
-                        }
-                    } else {
-                        let resultText: String
-                        do {
-                            let result = try await translator.runPrompt(trimmedPrompt, text: trimmedText)
-                            resultText = result.isEmpty ? UIStrings.Popup.emptyResult : result
-                        } catch {
-                            resultText = UIStrings.Translation.failed
-                        }
-                        print("\(function.title): \(resultText)")
-                        await MainActor.run {
-                            forceClickSelectionPopup.updateResult(
-                                resultText,
-                                for: requestID,
-                                functionID: function.id,
-                                near: anchor.point,
-                                isFinal: true
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func fetchOrSelectText() -> String? {
