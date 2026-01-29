@@ -18,6 +18,7 @@ final class PreferencesViewModel: ObservableObject {
     @Published var baselineWindowText: String = String(format: "%.0f", AppPreferences.baselineWindowMs())
     @Published var customFunctions: [CustomFunction] = AppPreferences.customFunctions()
     @Published var systemPrompt: String = AppPreferences.systemPrompt()
+    @Published var startOnLogin: Bool = AppPreferences.startOnLoginEnabled()
     @Published var selectedFunctionID: CustomFunction.ID?
     @Published var apiTestState: ApiTestState = .idle
 
@@ -38,6 +39,7 @@ final class PreferencesViewModel: ObservableObject {
         baselineWindowText = String(format: "%.0f", AppPreferences.baselineWindowMs())
         customFunctions = AppPreferences.customFunctions()
         systemPrompt = AppPreferences.systemPrompt()
+        startOnLogin = AppPreferences.startOnLoginEnabled()
         if let selectedFunctionID, customFunctions.contains(where: { $0.id == selectedFunctionID }) {
             return
         }

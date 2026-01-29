@@ -5,6 +5,7 @@ import OpenMultitouchSupport
 @main
 struct Digger {
     static func main() {
+        StartOnLoginManager.refreshPreference()
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let mainMenuController = MainMenuController()

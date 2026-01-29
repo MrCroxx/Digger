@@ -102,6 +102,15 @@ struct PreferencesView: View {
         .onChange(of: viewModel.streamingEnabled) { newValue in
             AppPreferences.setTranslationStreamingEnabled(newValue)
         }
+        .onChange(of: viewModel.startOnLogin) { newValue in
+            AppPreferences.setStartOnLoginEnabled(newValue)
+            StartOnLoginManager.apply(enabled: newValue)
+            let currentValue = StartOnLoginManager.isEnabled()
+            if currentValue != newValue {
+                AppPreferences.setStartOnLoginEnabled(currentValue)
+                viewModel.startOnLogin = currentValue
+            }
+        }
         .onChange(of: viewModel.popupFontSize) { newValue in
             let clamped = Double(PopupFontPreferences.clamp(CGFloat(newValue)))
             if clamped != newValue {
@@ -190,6 +199,9 @@ struct PreferencesView: View {
             }
             Toggle(isOn: $viewModel.streamingEnabled) {
                 preferenceLabel(UIStrings.Preferences.streamingLabel)
+            }
+            Toggle(isOn: $viewModel.startOnLogin) {
+                preferenceLabel(UIStrings.Preferences.startOnLoginLabel)
             }
         }
     }

@@ -46,6 +46,7 @@ final class PreferencesWindowController: NSObject {
     }
 
     func show() {
+        StartOnLoginManager.refreshPreference()
         viewModel.refresh()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
