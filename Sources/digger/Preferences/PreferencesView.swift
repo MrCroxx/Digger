@@ -108,6 +108,9 @@ struct PreferencesView: View {
         .onChange(of: viewModel.endpoint) { newValue in
             AppPreferences.setEndpoint(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+        .onChange(of: viewModel.model) { newValue in
+            AppPreferences.setModel(newValue)
+        }
         .onChange(of: viewModel.customFunctions) { newValue in
             AppPreferences.setCustomFunctions(newValue)
             onCustomFunctionsChange()
@@ -292,6 +295,11 @@ struct PreferencesView: View {
             }
             LabeledContent("OPENAI_ENDPOINT") {
                 TextField("", text: $viewModel.endpoint)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+            }
+            LabeledContent("OPENAI_MODEL") {
+                TextField("", text: $viewModel.model)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
             }

@@ -157,6 +157,7 @@ final class ForceClickSelectionPopup {
     private let originalTextField: NSTextField
     private let contentView: DraggableContentView
     private let headerView: NSView
+    private let modelLabelField: NSTextField
     private let headerDividerView: NSView
     private let scrollView: DraggableScrollView
     private let documentView: NSView
@@ -240,6 +241,13 @@ final class ForceClickSelectionPopup {
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
         headerView = NSView()
+        modelLabelField = NSTextField(labelWithString: "")
+        modelLabelField.font = NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
+        modelLabelField.textColor = .secondaryLabelColor
+        modelLabelField.backgroundColor = .clear
+        modelLabelField.isEditable = false
+        modelLabelField.isSelectable = false
+        modelLabelField.lineBreakMode = .byTruncatingTail
         headerDividerView = NSView()
         headerDividerView.wantsLayer = true
         headerDividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
@@ -256,6 +264,7 @@ final class ForceClickSelectionPopup {
         scrollView.scrollerStyle = .overlay
         scrollView.borderType = .noBorder
         scrollView.documentView = documentView
+        headerView.addSubview(modelLabelField)
         headerView.addSubview(copyAllButton)
         headerView.addSubview(preferencesButton)
         contentView.addSubview(scrollView)
@@ -342,6 +351,7 @@ final class ForceClickSelectionPopup {
         let scale = clampedSize / baseTextSize
         originalTitleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
         originalTextField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+        modelLabelField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
         for index in functionSections.indices {
             functionSections[index].titleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
             functionSections[index].textField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
@@ -477,11 +487,14 @@ final class ForceClickSelectionPopup {
         let baseMaxWidth: CGFloat = 320
         let controlsHeight: CGFloat = 18
         let controlsSpacing: CGFloat = 6
+        let headerLabelSpacing: CGFloat = 8
+        let headerLabelExtra: CGFloat = 6
+        let headerButtonSize: CGFloat = 18
+        let headerButtonSpacing: CGFloat = 6
         let preferredMaxWidth = AppPreferences.popupMaxWidth()
         let preferredMaxHeight = AppPreferences.popupMaxHeight()
         let screen = location.flatMap { screenContaining($0) } ?? NSScreen.main ?? NSScreen.screens.first
         let visibleFrame = screen?.visibleFrame ?? .zero
-        let maxWidthLimit = max(minWidth, min(preferredMaxWidth, visibleFrame.width - 24))
         let maxHeightLimit = max(120, min(preferredMaxHeight, visibleFrame.height - 24))
         let titleTextSpacing: CGFloat = 2
         let dividerHeight: CGFloat = 1
@@ -504,6 +517,19 @@ final class ForceClickSelectionPopup {
 
         let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
+
+        let modelText = AppPreferences.model()
+        modelLabelField.stringValue = modelText
+        let modelFont = modelLabelField.font ?? NSFont.systemFont(ofSize: baseTitleSize, weight: .semibold)
+        let modelAttributes: [NSAttributedString.Key: Any] = [.font: modelFont]
+        let modelWidth = ceil(max(
+            modelLabelField.intrinsicContentSize.width,
+            (modelText as NSString).size(withAttributes: modelAttributes).width
+        ))
+        let headerButtonsWidth = CGFloat(actionButtons.count) * headerButtonSize
+            + CGFloat(max(0, actionButtons.count - 1)) * headerButtonSpacing
+        let headerMinWidth = paddingLeft + modelWidth + headerLabelSpacing + headerButtonsWidth + padding.width + headerLabelExtra
+        let maxWidthLimit = max(minWidth, min(max(preferredMaxWidth, headerMinWidth), visibleFrame.width - 24))
 
         func measureLayout(
             maxWidth: CGFloat,
@@ -530,7 +556,10 @@ final class ForceClickSelectionPopup {
                 let sectionWidth = max(sectionTitleWidth, sectionTextSizes[index].width)
                 contentTextWidth = max(contentTextWidth, sectionWidth)
             }
-            let contentWidth = max(minWidth, min(maxWidth, contentTextWidth + paddingLeft + paddingRight))
+            let contentWidth = max(
+                minWidth,
+                min(maxWidth, max(contentTextWidth + paddingLeft + paddingRight, headerMinWidth))
+            )
             let adjustedTextMaxWidth = contentWidth - paddingLeft - paddingRight
             if abs(adjustedTextMaxWidth - textMaxWidth) > 0.5 {
                 let adjustedOriginalTextSize = textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
@@ -598,7 +627,7 @@ final class ForceClickSelectionPopup {
         }
 
         var paddingRight = padding.width
-        var targetMaxWidth = min(baseMaxWidth, maxWidthLimit)
+        var targetMaxWidth = min(maxWidthLimit, max(baseMaxWidth, headerMinWidth))
         var measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
         let widthStep: CGFloat = 40
         while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
@@ -609,7 +638,7 @@ final class ForceClickSelectionPopup {
         let needsVerticalScroll = measurement.contentHeight > maxHeightLimit
         if needsVerticalScroll {
             paddingRight = padding.width + scrollerClearance
-            targetMaxWidth = min(targetMaxWidth, maxWidthLimit)
+            targetMaxWidth = min(maxWidthLimit, max(targetMaxWidth, headerMinWidth))
             measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
             while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
                 targetMaxWidth = min(targetMaxWidth + widthStep, maxWidthLimit)
@@ -714,6 +743,11 @@ final class ForceClickSelectionPopup {
             let x = buttonsX + CGFloat(index) * (buttonSize + buttonSpacing)
             button.frame = NSRect(x: x, y: buttonsY, width: buttonSize, height: buttonSize)
         }
+        let modelSize = (modelText as NSString).size(withAttributes: modelAttributes)
+        let labelMaxWidth = max(0, buttonsX - paddingLeft - headerLabelSpacing)
+        let labelHeight = ceil(modelSize.height)
+        let labelY = (headerHeight - labelHeight) * 0.5
+        modelLabelField.frame = NSRect(x: paddingLeft, y: labelY, width: labelMaxWidth, height: labelHeight)
         return CGSize(width: contentWidth, height: visibleHeight + headerHeight)
     }
 

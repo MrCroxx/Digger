@@ -5,6 +5,7 @@ import Foundation
 enum AppPreferences {
     static let apiKeyKey = "OpenAIAPIKey"
     static let endpointKey = "OpenAIEndpoint"
+    static let modelKey = "OpenAIModel"
     static let pressureThresholdKey = "ForceClickPressureThreshold"
     static let pressureDeltaKey = "ForceClickPressureDelta"
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
@@ -30,6 +31,7 @@ enum AppPreferences {
     static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
+    static let defaultModel = "gpt-4.1-mini"
 
     static func apiKey() -> String {
         UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
@@ -45,6 +47,23 @@ enum AppPreferences {
 
     static func setEndpoint(_ value: String) {
         UserDefaults.standard.set(value, forKey: endpointKey)
+    }
+
+    static func model() -> String {
+        let stored = UserDefaults.standard.string(forKey: modelKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stored, !stored.isEmpty {
+            return stored
+        }
+        return defaultModel
+    }
+
+    static func setModel(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: modelKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: modelKey)
+        }
     }
 
     static func pressureThreshold() -> CGFloat {

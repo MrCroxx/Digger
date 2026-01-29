@@ -54,12 +54,13 @@ actor OpenAITranslator {
     }
 
     func runPrompt(_ prompt: String, text: String) async throws -> String {
+        let model = AppPreferences.model()
         let query = ChatQuery(
             messages: [
                 .system(.init(content: .textContent(prompt))),
                 .user(.init(content: .string(text)))
             ],
-            model: .gpt4_1_mini,
+            model: model,
             temperature: 0.2
         )
         let result = try await client.chats(query: query)
@@ -67,12 +68,13 @@ actor OpenAITranslator {
     }
 
     func runPromptStream(_ prompt: String, text: String) async throws -> AsyncThrowingStream<String, Error> {
+        let model = AppPreferences.model()
         let query = ChatQuery(
             messages: [
                 .system(.init(content: .textContent(prompt))),
                 .user(.init(content: .string(text)))
             ],
-            model: .gpt4_1_mini,
+            model: model,
             temperature: 0.2
         )
         let stream: AsyncThrowingStream<ChatStreamResult, Error> = client.chatsStream(query: query)
