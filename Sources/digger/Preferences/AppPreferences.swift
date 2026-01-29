@@ -12,6 +12,8 @@ enum AppPreferences {
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
     static let popupTooltipDelayMsKey = "PopupTooltipDelayMs"
+    static let popupCollapsedFunctionIDsKey = "PopupCollapsedFunctionIDs"
+    static let popupOriginalCollapsedKey = "PopupOriginalCollapsed"
     static let popupShortcutKeyCodeKey = "PopupShortcutKeyCode"
     static let popupShortcutModifiersKey = "PopupShortcutModifiers"
     static let translationStreamingKey = "TranslationStreaming"
@@ -28,7 +30,7 @@ enum AppPreferences {
     static let defaultPopupMaxHeight: CGFloat = 360
     static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
-    static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand, .maskControl]
+    static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
     static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
@@ -122,6 +124,48 @@ enum AppPreferences {
 
     static func setPopupTooltipDelayMs(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 0)), forKey: popupTooltipDelayMsKey)
+    }
+
+    static func popupOriginalCollapsed() -> Bool {
+        UserDefaults.standard.bool(forKey: popupOriginalCollapsedKey)
+    }
+
+    static func setPopupOriginalCollapsed(_ isCollapsed: Bool) {
+        UserDefaults.standard.set(isCollapsed, forKey: popupOriginalCollapsedKey)
+    }
+
+    static func popupCollapsedFunctionIDs() -> Set<UUID> {
+        guard let stored = UserDefaults.standard.array(forKey: popupCollapsedFunctionIDsKey) as? [String] else {
+            return []
+        }
+        var ids = Set<UUID>()
+        var hadInvalid = false
+        for value in stored {
+            if let id = UUID(uuidString: value) {
+                ids.insert(id)
+            } else {
+                hadInvalid = true
+            }
+        }
+        if hadInvalid {
+            setPopupCollapsedFunctionIDs(ids)
+        }
+        return ids
+    }
+
+    static func setPopupCollapsedFunctionIDs(_ ids: Set<UUID>) {
+        let values = ids.map { $0.uuidString }.sorted()
+        UserDefaults.standard.set(values, forKey: popupCollapsedFunctionIDsKey)
+    }
+
+    static func setPopupFunctionCollapsed(_ id: UUID, isCollapsed: Bool) {
+        var ids = popupCollapsedFunctionIDs()
+        if isCollapsed {
+            ids.insert(id)
+        } else {
+            ids.remove(id)
+        }
+        setPopupCollapsedFunctionIDs(ids)
     }
 
     static func popupShortcut() -> KeyboardShortcut {
