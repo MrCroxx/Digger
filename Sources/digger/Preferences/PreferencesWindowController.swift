@@ -16,7 +16,7 @@ final class PreferencesWindowController: NSObject {
         AppPreferences.clearCustomFunctionsOnceIfNeeded()
         viewModel = PreferencesViewModel()
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 460),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
