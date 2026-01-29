@@ -19,6 +19,7 @@ final class PreferencesViewModel: ObservableObject {
     @Published var customFunctions: [CustomFunction] = AppPreferences.customFunctions()
     @Published var systemPrompt: String = AppPreferences.systemPrompt()
     @Published var selectedFunctionID: CustomFunction.ID?
+    @Published var apiTestState: ApiTestState = .idle
 
     func refresh() {
         language = AppPreferences.language()
@@ -42,4 +43,37 @@ final class PreferencesViewModel: ObservableObject {
         }
         selectedFunctionID = customFunctions.first?.id
     }
+
+    func testAPI() async {
+        let apiKeyText = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelText = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if apiKeyText.isEmpty {
+            apiTestState = .failure(UIStrings.Preferences.apiTestMissingKey)
+            return
+        }
+        if modelText.isEmpty {
+            apiTestState = .failure(UIStrings.Preferences.apiTestMissingModel)
+            return
+        }
+
+        apiTestState = .testing
+        do {
+            _ = try await OpenAITranslator.testConnection(
+                apiKey: apiKeyText,
+                endpoint: endpoint,
+                model: modelText
+            )
+            apiTestState = .success(UIStrings.Preferences.apiTestSuccess)
+        } catch {
+            let message = UIStrings.Preferences.apiTestFailedPrefix + " " + error.localizedDescription
+            apiTestState = .failure(message)
+        }
+    }
+}
+
+enum ApiTestState: Equatable {
+    case idle
+    case testing
+    case success(String)
+    case failure(String)
 }
