@@ -23,6 +23,7 @@ enum AppPreferences {
     static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
     static let systemPromptKey = "SystemPrompt"
     static let welcomeCompletedKey = "WelcomeCompleted"
+    static let startOnLoginKey = "StartOnLogin"
 
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 55.0
@@ -255,6 +256,14 @@ enum AppPreferences {
 
     static func setWelcomeCompleted(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: welcomeCompletedKey)
+    }
+
+    static func startOnLoginEnabled() -> Bool {
+        UserDefaults.standard.bool(forKey: startOnLoginKey)
+    }
+
+    static func setStartOnLoginEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: startOnLoginKey)
     }
 
     static func clearCustomFunctions() {

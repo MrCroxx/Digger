@@ -81,6 +81,7 @@ enum UIStrings {
         case preferencesLanguageLabel
         case preferencesTargetLanguageLabel
         case preferencesStreamingLabel
+        case preferencesStartOnLoginLabel
         case preferencesCustomFunctionsTitle
         case preferencesCustomFunctionsDescription
         case preferencesSystemPromptTitle
@@ -163,6 +164,7 @@ enum UIStrings {
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
+        static var startOnLoginLabel: String { value(.preferencesStartOnLoginLabel) }
         static var customFunctionsTitle: String { value(.preferencesCustomFunctionsTitle) }
         static var customFunctionsDescription: String { value(.preferencesCustomFunctionsDescription) }
         static var systemPromptTitle: String { value(.preferencesSystemPromptTitle) }
@@ -254,6 +256,7 @@ enum UIStrings {
             .preferencesLanguageLabel: "Language",
             .preferencesTargetLanguageLabel: "Target Language",
             .preferencesStreamingLabel: "Stream Translation",
+            .preferencesStartOnLoginLabel: "Start on Login",
             .preferencesCustomFunctionsTitle: "Custom Prompts",
             .preferencesCustomFunctionsDescription: "Add prompts that apply to selected text.",
             .preferencesSystemPromptTitle: "System Prompt",
@@ -329,6 +332,7 @@ enum UIStrings {
             .preferencesLanguageLabel: "语言",
             .preferencesTargetLanguageLabel: "目标语言",
             .preferencesStreamingLabel: "流式译文",
+            .preferencesStartOnLoginLabel: "登录时启动",
             .preferencesCustomFunctionsTitle: "自定义提示语",
             .preferencesCustomFunctionsDescription: "添加应用于选中文本的提示语。",
             .preferencesSystemPromptTitle: "系统提示语",
@@ -404,6 +408,7 @@ enum UIStrings {
             .preferencesLanguageLabel: "言語",
             .preferencesTargetLanguageLabel: "翻訳先",
             .preferencesStreamingLabel: "ストリーミング翻訳",
+            .preferencesStartOnLoginLabel: "ログイン時に起動",
             .preferencesCustomFunctionsTitle: "カスタムプロンプト",
             .preferencesCustomFunctionsDescription: "選択したテキストに適用するプロンプトを追加します。",
             .preferencesSystemPromptTitle: "システムプロンプト",
