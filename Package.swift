@@ -27,6 +27,9 @@ let package = Package(
                 .product(name: "OpenMultitouchSupport", package: "OpenMultitouchSupport"),
                 .product(name: "OpenAI", package: "OpenAI")
             ],
+            resources: [
+                .process("Resources")
+            ],
             linkerSettings: [
                 .linkedFramework("ApplicationServices")
             ]
