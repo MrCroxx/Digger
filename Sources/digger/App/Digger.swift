@@ -37,7 +37,9 @@ struct Digger {
             pressureDelta: delta,
             baselineWindow: windowMs / 1000,
             onForceClick: {
-                selectionHandler.handleForceClick()
+                Task {
+                    await selectionHandler.handleForceClick()
+                }
             }
         )
         let eventTap = ForceClickEventTap(monitor: monitor, selectionHandler: selectionHandler)
