@@ -111,6 +111,9 @@ struct PreferencesView: View {
         .onChange(of: viewModel.model) { newValue in
             AppPreferences.setModel(newValue)
         }
+        .onChange(of: viewModel.systemPrompt) { newValue in
+            AppPreferences.setSystemPrompt(newValue)
+        }
         .onChange(of: viewModel.customFunctions) { newValue in
             AppPreferences.setCustomFunctions(newValue)
             onCustomFunctionsChange()
@@ -222,44 +225,58 @@ struct PreferencesView: View {
     }
 
     private var functionsPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(UIStrings.Preferences.customFunctionsTitle)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(UIStrings.Preferences.systemPromptTitle)
                     .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button("+") {
-                    addFunction()
-                }
-                .frame(width: 24)
+                Text(UIStrings.Preferences.systemPromptDescription)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                TextField(
+                    UIStrings.Preferences.systemPromptPlaceholder,
+                    text: $viewModel.systemPrompt
+                )
+                .textFieldStyle(.roundedBorder)
             }
-            Text(UIStrings.Preferences.customFunctionsDescription)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            List(selection: $viewModel.selectedFunctionID) {
-                ForEach(viewModel.customFunctions.indices, id: \.self) { index in
-                    HStack(spacing: 12) {
-                        TextField(
-                            UIStrings.Preferences.functionTitlePlaceholder,
-                            text: $viewModel.customFunctions[index].title
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 160)
-                        TextField(
-                            UIStrings.Preferences.functionPromptPlaceholder,
-                            text: $viewModel.customFunctions[index].prompt
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        Button("-") {
-                            removeFunction(viewModel.customFunctions[index].id)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .frame(width: 24)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(UIStrings.Preferences.customFunctionsTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Button("+") {
+                        addFunction()
                     }
-                    .tag(viewModel.customFunctions[index].id)
+                    .frame(width: 24)
                 }
+                Text(UIStrings.Preferences.customFunctionsDescription)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                List(selection: $viewModel.selectedFunctionID) {
+                    ForEach(viewModel.customFunctions.indices, id: \.self) { index in
+                        HStack(spacing: 12) {
+                            TextField(
+                                UIStrings.Preferences.functionTitlePlaceholder,
+                                text: $viewModel.customFunctions[index].title
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 160)
+                            TextField(
+                                UIStrings.Preferences.functionPromptPlaceholder,
+                                text: $viewModel.customFunctions[index].prompt
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            Button("-") {
+                                removeFunction(viewModel.customFunctions[index].id)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .frame(width: 24)
+                        }
+                        .tag(viewModel.customFunctions[index].id)
+                    }
+                }
+                .frame(minHeight: 180)
             }
-            .frame(minHeight: 180)
         }
     }
 

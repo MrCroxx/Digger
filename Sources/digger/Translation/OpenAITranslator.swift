@@ -55,11 +55,15 @@ actor OpenAITranslator {
 
     func runPrompt(_ prompt: String, text: String) async throws -> String {
         let model = AppPreferences.model()
+        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+        var messages: [ChatQuery.ChatCompletionMessageParam] = []
+        if !systemPrompt.isEmpty {
+            messages.append(.system(.init(content: .textContent(systemPrompt))))
+        }
+        messages.append(.system(.init(content: .textContent(prompt))))
+        messages.append(.user(.init(content: .string(text))))
         let query = ChatQuery(
-            messages: [
-                .system(.init(content: .textContent(prompt))),
-                .user(.init(content: .string(text)))
-            ],
+            messages: messages,
             model: model,
             temperature: 0.2
         )
@@ -69,11 +73,15 @@ actor OpenAITranslator {
 
     func runPromptStream(_ prompt: String, text: String) async throws -> AsyncThrowingStream<String, Error> {
         let model = AppPreferences.model()
+        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+        var messages: [ChatQuery.ChatCompletionMessageParam] = []
+        if !systemPrompt.isEmpty {
+            messages.append(.system(.init(content: .textContent(systemPrompt))))
+        }
+        messages.append(.system(.init(content: .textContent(prompt))))
+        messages.append(.user(.init(content: .string(text))))
         let query = ChatQuery(
-            messages: [
-                .system(.init(content: .textContent(prompt))),
-                .user(.init(content: .string(text)))
-            ],
+            messages: messages,
             model: model,
             temperature: 0.2
         )

@@ -81,6 +81,9 @@ enum UIStrings {
         case preferencesStreamingLabel
         case preferencesCustomFunctionsTitle
         case preferencesCustomFunctionsDescription
+        case preferencesSystemPromptTitle
+        case preferencesSystemPromptDescription
+        case preferencesSystemPromptPlaceholder
         case preferencesFunctionTitleLabel
         case preferencesFunctionPromptLabel
         case preferencesAddFunction
@@ -143,6 +146,9 @@ enum UIStrings {
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
         static var customFunctionsTitle: String { value(.preferencesCustomFunctionsTitle) }
         static var customFunctionsDescription: String { value(.preferencesCustomFunctionsDescription) }
+        static var systemPromptTitle: String { value(.preferencesSystemPromptTitle) }
+        static var systemPromptDescription: String { value(.preferencesSystemPromptDescription) }
+        static var systemPromptPlaceholder: String { value(.preferencesSystemPromptPlaceholder) }
         static var functionTitleLabel: String { value(.preferencesFunctionTitleLabel) }
         static var functionPromptLabel: String { value(.preferencesFunctionPromptLabel) }
         static var addFunction: String { value(.preferencesAddFunction) }
@@ -199,7 +205,7 @@ enum UIStrings {
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesTabGeneral: "General",
             .preferencesTabPopup: "Popup",
-            .preferencesTabFunctions: "Functions",
+            .preferencesTabFunctions: "Prompts",
             .preferencesTabAdvanced: "Advanced",
             .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
@@ -211,6 +217,9 @@ enum UIStrings {
             .preferencesStreamingLabel: "Stream Translation",
             .preferencesCustomFunctionsTitle: "Custom Functions",
             .preferencesCustomFunctionsDescription: "Add prompts that apply to selected text.",
+            .preferencesSystemPromptTitle: "System Prompt",
+            .preferencesSystemPromptDescription: "Applied to all prompts, including translation.",
+            .preferencesSystemPromptPlaceholder: "Enter system prompt",
             .preferencesFunctionTitleLabel: "Title",
             .preferencesFunctionPromptLabel: "Prompt",
             .preferencesAddFunction: "Add Function",
@@ -254,7 +263,7 @@ enum UIStrings {
             .preferencesDescription: "设置会自动保存。",
             .preferencesTabGeneral: "通用",
             .preferencesTabPopup: "弹窗",
-            .preferencesTabFunctions: "自定义功能",
+            .preferencesTabFunctions: "提示语",
             .preferencesTabAdvanced: "高级",
             .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "弹窗字号",
@@ -266,6 +275,9 @@ enum UIStrings {
             .preferencesStreamingLabel: "流式译文",
             .preferencesCustomFunctionsTitle: "自定义功能",
             .preferencesCustomFunctionsDescription: "添加应用于选中文本的提示语。",
+            .preferencesSystemPromptTitle: "系统提示语",
+            .preferencesSystemPromptDescription: "应用于所有提示语，包括翻译。",
+            .preferencesSystemPromptPlaceholder: "输入系统提示语",
             .preferencesFunctionTitleLabel: "标题",
             .preferencesFunctionPromptLabel: "Prompt",
             .preferencesAddFunction: "添加功能",
@@ -309,7 +321,7 @@ enum UIStrings {
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesTabGeneral: "一般",
             .preferencesTabPopup: "ポップアップ",
-            .preferencesTabFunctions: "カスタム機能",
+            .preferencesTabFunctions: "プロンプト",
             .preferencesTabAdvanced: "詳細",
             .preferencesTabAPI: "API",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
@@ -321,6 +333,9 @@ enum UIStrings {
             .preferencesStreamingLabel: "ストリーミング翻訳",
             .preferencesCustomFunctionsTitle: "カスタム機能",
             .preferencesCustomFunctionsDescription: "選択したテキストに適用するプロンプトを追加します。",
+            .preferencesSystemPromptTitle: "システムプロンプト",
+            .preferencesSystemPromptDescription: "翻訳を含むすべてのプロンプトに適用されます。",
+            .preferencesSystemPromptPlaceholder: "システムプロンプトを入力",
             .preferencesFunctionTitleLabel: "タイトル",
             .preferencesFunctionPromptLabel: "プロンプト",
             .preferencesAddFunction: "機能を追加",

@@ -19,6 +19,7 @@ enum AppPreferences {
     static let translationTargetLanguageKey = "TranslationTargetLanguage"
     static let customFunctionsKey = "CustomFunctions"
     static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
+    static let systemPromptKey = "SystemPrompt"
 
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 2.0
@@ -32,6 +33,7 @@ enum AppPreferences {
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
     static let defaultModel = "gpt-4.1-mini"
+    static let defaultSystemPrompt = "Only return the result, without extra output."
 
     static func apiKey() -> String {
         UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
@@ -182,6 +184,23 @@ enum AppPreferences {
             UserDefaults.standard.set(data, forKey: customFunctionsKey)
         } catch {
             return
+        }
+    }
+
+    static func systemPrompt() -> String {
+        let stored = UserDefaults.standard.string(forKey: systemPromptKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stored, !stored.isEmpty {
+            return stored
+        }
+        return defaultSystemPrompt
+    }
+
+    static func setSystemPrompt(_ prompt: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: systemPromptKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: systemPromptKey)
         }
     }
 
