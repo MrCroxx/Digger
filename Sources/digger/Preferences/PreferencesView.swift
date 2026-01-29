@@ -287,32 +287,33 @@ struct PreferencesView: View {
                     Color.clear
                         .frame(width: 24, height: 1)
                 }
-                List(selection: $viewModel.selectedFunctionID) {
-                    ForEach(viewModel.customFunctions.indices, id: \.self) { index in
-                        HStack(spacing: 12) {
-                            TextField(
-                                UIStrings.Preferences.functionTitlePlaceholder,
-                                text: $viewModel.customFunctions[index].title
-                            )
-                            .preferenceInputStyle()
-                            .frame(width: 160)
-                            TextField(
-                                UIStrings.Preferences.functionPromptPlaceholder,
-                                text: $viewModel.customFunctions[index].prompt
-                            )
-                            .preferenceInputStyle()
-                            Button("-") {
-                                removeFunction(viewModel.customFunctions[index].id)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(viewModel.customFunctions, id: \.id) { function in
+                            HStack(spacing: 12) {
+                                TextField(
+                                    UIStrings.Preferences.functionTitlePlaceholder,
+                                    text: binding(for: function.id, keyPath: \.title)
+                                )
+                                .preferenceInputStyle()
+                                .frame(width: 160)
+                                TextField(
+                                    UIStrings.Preferences.functionPromptPlaceholder,
+                                    text: binding(for: function.id, keyPath: \.prompt)
+                                )
+                                .preferenceInputStyle()
+                                Button("-") {
+                                    removeFunction(function.id)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .frame(width: 24)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .frame(width: 24)
                         }
-                        .tag(viewModel.customFunctions[index].id)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(minHeight: 180)
-                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
     }
@@ -434,6 +435,20 @@ struct PreferencesView: View {
         if wasSelected {
             viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
         }
+    }
+
+    private func binding(for id: UUID, keyPath: WritableKeyPath<CustomFunction, String>) -> Binding<String> {
+        Binding(
+            get: {
+                viewModel.customFunctions.first(where: { $0.id == id })?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                guard let index = viewModel.customFunctions.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                viewModel.customFunctions[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 
     private func applyField(_ field: Field) {
