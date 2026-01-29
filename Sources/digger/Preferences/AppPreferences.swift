@@ -22,7 +22,7 @@ enum AppPreferences {
     static let systemPromptKey = "SystemPrompt"
 
     static let defaultThreshold: CGFloat = 3.0
-    static let defaultDelta: CGFloat = 2.0
+    static let defaultDelta: CGFloat = 55.0
     static let defaultBaselineWindowMs: CGFloat = 120
     static let defaultPopupMaxWidth: CGFloat = 520
     static let defaultPopupMaxHeight: CGFloat = 360

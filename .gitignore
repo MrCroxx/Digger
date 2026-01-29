@@ -1,5 +1,12 @@
 .DS_Store
 /.build
+/dist
+*.app
+*.dSYM
+*.xcarchive
+*.dmg
+*.pkg
+*.zip
 /Packages
 xcuserdata/
 DerivedData/
