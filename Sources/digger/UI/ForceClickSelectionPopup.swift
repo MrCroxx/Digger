@@ -297,8 +297,8 @@ final class ForceClickSelectionPopup {
         window.collectionBehavior = [.canJoinAllSpaces, .transient]
         window.ignoresMouseEvents = false
         window.contentView = contentView
-        window.onDismiss = { [weak window] in
-            window?.orderOut(nil)
+        window.onDismiss = { [weak self] in
+            self?.dismissPopup()
         }
 
         for button in actionButtons {
@@ -927,6 +927,17 @@ final class ForceClickSelectionPopup {
         loadingDotCount = 0
     }
 
+    private func resetContentForNextShow() {
+        currentRequestID = nil
+        lastAnchorLocation = nil
+        originalTextField.stringValue = ""
+        for index in functionSections.indices {
+            functionSections[index].textField.stringValue = ""
+            functionSections[index].isLoading = false
+        }
+        updateActionButtons()
+    }
+
     private func tickLoadingAnimation() {
         loadingDotCount = (loadingDotCount + 1) % 4
         updateLoadingText()
@@ -1191,9 +1202,7 @@ final class ForceClickSelectionPopup {
         guard window.isVisible else {
             return
         }
-        cancelPendingLayoutUpdate()
-        stopLoadingAnimation()
-        window.orderOut(nil)
+        dismissPopup()
     }
 
     func dismissIfClickOutside(_ location: CGPoint) {
@@ -1201,10 +1210,16 @@ final class ForceClickSelectionPopup {
             return
         }
         if !isLocationInsideWindow(location) {
-            cancelPendingLayoutUpdate()
-            stopLoadingAnimation()
-            window.orderOut(nil)
+            dismissPopup()
         }
+    }
+
+    private func dismissPopup() {
+        cancelPendingLayoutUpdate()
+        stopLoadingAnimation()
+        hideTooltip()
+        window.orderOut(nil)
+        resetContentForNextShow()
     }
 
     private func isLocationInsideWindow(_ location: CGPoint) -> Bool {

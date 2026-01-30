@@ -30,8 +30,8 @@ enum AppPreferences {
     static let defaultThreshold: CGFloat = 3.0
     static let defaultDelta: CGFloat = 55.0
     static let defaultBaselineWindowMs: CGFloat = 120
-    static let defaultPopupMaxWidth: CGFloat = 520
-    static let defaultPopupMaxHeight: CGFloat = 360
+    static let defaultPopupMaxWidth: CGFloat = 640
+    static let defaultPopupMaxHeight: CGFloat = 480
     static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
