@@ -8,18 +8,33 @@ struct DMGBackgroundRenderer {
 
     func render() throws {
         let size = NSSize(width: width, height: height)
-        let image = NSImage(size: size)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            throw NSError(domain: "dmg-background", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap context"])
+        }
 
-        image.lockFocus()
-        defer { image.unlockFocus() }
+        let context = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
 
-        drawBackground(in: NSRect(origin: .zero, size: size))
-        drawArrow(in: NSRect(origin: .zero, size: size))
-        drawText(in: NSRect(origin: .zero, size: size))
+        let rect = NSRect(origin: .zero, size: size)
+        drawBackground(in: rect)
+        drawArrow(in: rect)
+        drawText(in: rect)
 
-        guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
             throw NSError(domain: "dmg-background", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create PNG data"])
         }
 
