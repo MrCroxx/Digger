@@ -118,9 +118,14 @@ enum UIStrings {
         case welcomeAccessibilityTitle
         case welcomeAccessibilityDescription
         case welcomeOpenAccessibilityButton
+        case welcomeLookupDataDetectorsTitle
+        case welcomeLookupDataDetectorsDescription
+        case welcomeOpenTrackpadButton
+        case welcomeSkipNextTimeLabel
         case welcomeStartButton
         case welcomeStatusReady
         case welcomeStatusMissing
+        case menuOpenWelcome
     }
 
     enum Translation {
@@ -199,6 +204,7 @@ enum UIStrings {
         static var appTitle: String { value(.menuAppTitle) }
         static var window: String { value(.menuWindow) }
         static var close: String { value(.menuClose) }
+        static var openWelcome: String { value(.menuOpenWelcome) }
     }
 
     enum Welcome {
@@ -207,6 +213,10 @@ enum UIStrings {
         static var accessibilityTitle: String { value(.welcomeAccessibilityTitle) }
         static var accessibilityDescription: String { value(.welcomeAccessibilityDescription) }
         static var openAccessibilityButton: String { value(.welcomeOpenAccessibilityButton) }
+        static var lookupDataDetectorsTitle: String { value(.welcomeLookupDataDetectorsTitle) }
+        static var lookupDataDetectorsDescription: String { value(.welcomeLookupDataDetectorsDescription) }
+        static var openTrackpadButton: String { value(.welcomeOpenTrackpadButton) }
+        static var skipNextTimeLabel: String { value(.welcomeSkipNextTimeLabel) }
         static var startButton: String { value(.welcomeStartButton) }
         static var statusReady: String { value(.welcomeStatusReady) }
         static var statusMissing: String { value(.welcomeStatusMissing) }
@@ -288,11 +298,16 @@ enum UIStrings {
             .menuAppTitle: "Digger",
             .menuWindow: "Window",
             .menuClose: "Close",
+            .menuOpenWelcome: "Open Welcome",
             .welcomeTitle: "Welcome to Digger",
             .welcomeSubtitle: "To get started, enable the permissions below in System Settings.",
             .welcomeAccessibilityTitle: "Accessibility",
             .welcomeAccessibilityDescription: "Allows Digger to read selected text and listen for shortcuts.",
             .welcomeOpenAccessibilityButton: "Open Accessibility Settings",
+            .welcomeLookupDataDetectorsTitle: "Turn Off Look Up & Data Detectors",
+            .welcomeLookupDataDetectorsDescription: "Turn off Look Up & Data Detectors in Trackpad settings.\nIt helps avoid conflicts with Digger.",
+            .welcomeOpenTrackpadButton: "Open Trackpad Settings",
+            .welcomeSkipNextTimeLabel: "Skip welcome next time when permissions are ready",
             .welcomeStartButton: "Get Started",
             .welcomeStatusReady: "All permissions are ready",
             .welcomeStatusMissing: "Permissions required"
@@ -364,11 +379,16 @@ enum UIStrings {
             .menuAppTitle: "Digger",
             .menuWindow: "窗口",
             .menuClose: "关闭",
+            .menuOpenWelcome: "打开欢迎页",
             .welcomeTitle: "欢迎使用 Digger",
             .welcomeSubtitle: "开始使用前，请在系统设置中开启以下权限。",
             .welcomeAccessibilityTitle: "辅助功能",
             .welcomeAccessibilityDescription: "用于读取选中文本并监听快捷键。",
             .welcomeOpenAccessibilityButton: "打开辅助功能设置",
+            .welcomeLookupDataDetectorsTitle: "关闭“查询与数据检测器”",
+            .welcomeLookupDataDetectorsDescription: "请在触控板设置中关闭“查询与数据检测器”。\n这样可以避免与 Digger 冲突。",
+            .welcomeOpenTrackpadButton: "打开触控板设置",
+            .welcomeSkipNextTimeLabel: "下次权限已就绪时跳过欢迎页",
             .welcomeStartButton: "开始使用",
             .welcomeStatusReady: "权限已就绪",
             .welcomeStatusMissing: "需要授权"
@@ -440,11 +460,16 @@ enum UIStrings {
             .menuAppTitle: "Digger",
             .menuWindow: "ウインドウ",
             .menuClose: "閉じる",
+            .menuOpenWelcome: "ウェルカム画面を開く",
             .welcomeTitle: "Digger へようこそ",
             .welcomeSubtitle: "使用を開始するには、システム設定で以下の権限を有効にしてください。",
             .welcomeAccessibilityTitle: "アクセシビリティ",
             .welcomeAccessibilityDescription: "選択したテキストの取得とショートカットの検知に必要です。",
             .welcomeOpenAccessibilityButton: "アクセシビリティ設定を開く",
+            .welcomeLookupDataDetectorsTitle: "調べる & データ検出をオフにする",
+            .welcomeLookupDataDetectorsDescription: "トラックパッド設定で「調べる & データ検出」をオフにしてください。\nDigger との競合を避けるためです。",
+            .welcomeOpenTrackpadButton: "トラックパッド設定を開く",
+            .welcomeSkipNextTimeLabel: "次回、権限が揃っている場合はウェルカム画面をスキップ",
             .welcomeStartButton: "開始する",
             .welcomeStatusReady: "権限は準備完了です",
             .welcomeStatusMissing: "権限が必要です"
