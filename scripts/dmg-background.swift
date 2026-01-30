@@ -5,13 +5,17 @@ struct DMGBackgroundRenderer {
     let appName: String
     let width: Int
     let height: Int
+    let scale: Int
 
     func render() throws {
         let size = NSSize(width: width, height: height)
+        let scaleFactor = max(1, scale)
+        let pixelWidth = width * scaleFactor
+        let pixelHeight = height * scaleFactor
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: width,
-            pixelsHigh: height,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
             bitsPerSample: 8,
             samplesPerPixel: 4,
             hasAlpha: true,
@@ -23,9 +27,13 @@ struct DMGBackgroundRenderer {
             throw NSError(domain: "dmg-background", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap context"])
         }
 
+        bitmap.size = size
+
         let context = NSGraphicsContext(bitmapImageRep: bitmap)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
+        context?.imageInterpolation = .high
+        context?.shouldAntialias = true
 
         let rect = NSRect(origin: .zero, size: size)
         drawBackground(in: rect)
@@ -111,15 +119,18 @@ let args = CommandLine.arguments
 guard args.count >= 5,
       let width = Int(args[3]),
       let height = Int(args[4]) else {
-    fputs("Usage: dmg-background.swift <output-path> <app-name> <width> <height>\n", stderr)
+    fputs("Usage: dmg-background.swift <output-path> <app-name> <width> <height> [scale]\n", stderr)
     exit(1)
 }
+
+let scale = args.count >= 6 ? (Int(args[5]) ?? 1) : 1
 
 let renderer = DMGBackgroundRenderer(
     outputPath: args[1],
     appName: args[2],
     width: width,
-    height: height
+    height: height,
+    scale: scale
 )
 
 do {
