@@ -127,7 +127,7 @@ struct PreferencesView: View {
             AppPreferences.setApiKey(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         .onChange(of: viewModel.endpoint) { newValue in
-            AppPreferences.setEndpoint(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            AppPreferences.setEndpoint(newValue)
         }
         .onChange(of: viewModel.model) { newValue in
             AppPreferences.setModel(newValue)
@@ -362,18 +362,23 @@ struct PreferencesView: View {
     private var apiPane: some View {
         VStack(alignment: .leading, spacing: 12) {
             LabeledContent {
+                TextField(
+                    "",
+                    text: $viewModel.endpoint,
+                    prompt: Text(AppPreferences.defaultEndpoint)
+                        .foregroundColor(.secondary)
+                )
+                    .preferenceInputStyle()
+                    .frame(width: 260)
+            } label: {
+                preferenceLabel("OPENAI_ENDPOINT")
+            }
+            LabeledContent {
                 SecureField("", text: $viewModel.apiKey)
                     .preferenceInputStyle()
                     .frame(width: 260)
             } label: {
                 preferenceLabel("OPENAI_API_KEY")
-            }
-            LabeledContent {
-                TextField("", text: $viewModel.endpoint)
-                    .preferenceInputStyle()
-                    .frame(width: 260)
-            } label: {
-                preferenceLabel("OPENAI_ENDPOINT")
             }
             LabeledContent {
                 TextField("", text: $viewModel.model)
