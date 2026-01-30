@@ -5,6 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/.build/release"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
+ENV_FILE="$ROOT_DIR/.env.build"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+fi
+
 APP_NAME="${APP_NAME:-Digger}"
 BUNDLE_ID="${BUNDLE_ID:-com.digger.app}"
 VERSION="${VERSION:-1.0.0}"
@@ -23,6 +30,7 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
+APP_ICON_PATH="$RESOURCES_DIR/AppIcon.icns"
 
 echo "Building release binary..."
 swift build -c release
@@ -89,75 +97,135 @@ EOF
 echo "App bundle created at: $APP_DIR"
 
 if [[ "$CREATE_DMG" == "1" ]]; then
+  if [[ ! -f "$APP_ICON_PATH" ]]; then
+    echo "App icon not found at $APP_ICON_PATH"
+    exit 1
+  fi
+
+  INFO_PLIST_ICON=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$CONTENTS_DIR/Info.plist" 2>/dev/null || true)
+  if [[ "$INFO_PLIST_ICON" != "AppIcon" && "$INFO_PLIST_ICON" != "AppIcon.icns" ]]; then
+    echo "CFBundleIconFile is not set to AppIcon in $CONTENTS_DIR/Info.plist"
+    exit 1
+  fi
+
+  if ! command -v iconutil >/dev/null; then
+    echo "iconutil not found; cannot validate AppIcon.icns"
+    exit 1
+  fi
+
+  ICONSET_DIR="$(mktemp -d)"
+  if ! iconutil -c iconset -o "$ICONSET_DIR/AppIcon.iconset" "$APP_ICON_PATH"; then
+    echo "Failed to inspect AppIcon.icns"
+    rm -rf "$ICONSET_DIR"
+    exit 1
+  fi
+
+  if [[ ! -f "$ICONSET_DIR/AppIcon.iconset/icon_512x512.png" || ! -f "$ICONSET_DIR/AppIcon.iconset/icon_512x512@2x.png" ]]; then
+    echo "AppIcon.icns missing 512x512 or 1024x1024 sizes"
+    rm -rf "$ICONSET_DIR"
+    exit 1
+  fi
+
+  rm -rf "$ICONSET_DIR"
+fi
+
+if [[ "$CREATE_DMG" == "1" ]]; then
   if ! command -v hdiutil >/dev/null; then
     echo "hdiutil not found; skipping DMG creation"
   elif ! command -v osascript >/dev/null; then
     echo "osascript not found; skipping DMG creation"
   else
     DMG_NAME="$APP_NAME-$VERSION"
-    DMG_TEMP_PATH="$OUTPUT_DIR/$DMG_NAME-temp.dmg"
     DMG_PATH="$OUTPUT_DIR/$DMG_NAME.dmg"
-    STAGING_DIR="$(mktemp -d)"
-    MOUNT_DIR="$(mktemp -d)"
-    DMG_WINDOW_WIDTH=640
-    DMG_WINDOW_HEIGHT=360
-    DMG_ICON_SIZE=96
-    DMG_APP_POS_X=160
-    DMG_APP_POS_Y=170
-    DMG_APPS_POS_X=480
-    DMG_APPS_POS_Y=170
 
-    echo "Creating DMG staging folder..."
-    rm -f "$DMG_TEMP_PATH" "$DMG_PATH"
-    mkdir -p "$OUTPUT_DIR"
-    cp -R "$APP_DIR" "$STAGING_DIR/"
+    CREATE_DMG_BIN=""
+    if command -v npm >/dev/null; then
+      NPM_GLOBAL_BIN="$(npm prefix -g)/bin"
+      if [[ -x "$NPM_GLOBAL_BIN/create-dmg" ]]; then
+        CREATE_DMG_BIN="$NPM_GLOBAL_BIN/create-dmg"
+      fi
+    fi
 
-    if [[ "$GENERATE_DMG_BG" == "1" ]]; then
-      if [[ -f "$DMG_BG_SCRIPT" ]]; then
-        echo "Rendering DMG background..."
-        if ! swift "$DMG_BG_SCRIPT" "$DMG_BG_PATH" "$APP_NAME" "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT"; then
-          echo "Failed to render DMG background; continuing without background"
-          rm -f "$DMG_BG_PATH"
+    if [[ "$USE_CREATE_DMG" == "1" ]]; then
+      if [[ -z "$CREATE_DMG_BIN" ]]; then
+        echo "npm create-dmg not found; install with: npm install --global create-dmg"
+        exit 1
+      fi
+
+      echo "Building DMG image with create-dmg (npm)..."
+      mkdir -p "$OUTPUT_DIR"
+      rm -f "$DMG_PATH"
+
+      CREATE_DMG_ARGS=(--overwrite)
+      if [[ -n "$SIGN_IDENTITY" ]]; then
+        CREATE_DMG_ARGS+=("--identity=$SIGN_IDENTITY")
+      else
+        CREATE_DMG_ARGS+=(--no-code-sign)
+      fi
+
+      "$CREATE_DMG_BIN" "${CREATE_DMG_ARGS[@]}" "$APP_DIR" "$OUTPUT_DIR"
+
+      DMG_GENERATED_PATH="$OUTPUT_DIR/$APP_NAME $VERSION.dmg"
+      if [[ -f "$DMG_GENERATED_PATH" ]]; then
+        mv "$DMG_GENERATED_PATH" "$DMG_PATH"
+        DMG_MOUNT_DIR="$(mktemp -d)"
+        if hdiutil attach -mountpoint "$DMG_MOUNT_DIR" -nobrowse -noverify "$DMG_PATH" >/dev/null; then
+          VOLUME_HAS_ICON=$(mdls -name kMDItemFSHasCustomIcon -raw "$DMG_MOUNT_DIR" 2>/dev/null || true)
+          if [[ "$VOLUME_HAS_ICON" != "1" && "$VOLUME_HAS_ICON" != "true" && ! -f "$DMG_MOUNT_DIR/.VolumeIcon.icns" ]]; then
+            echo "DMG volume icon not set on $DMG_PATH"
+            hdiutil detach "$DMG_MOUNT_DIR" >/dev/null
+            rm -rf "$DMG_MOUNT_DIR"
+            exit 1
+          fi
+          hdiutil detach "$DMG_MOUNT_DIR" >/dev/null
+        else
+          echo "Failed to mount DMG for icon validation"
+          rm -rf "$DMG_MOUNT_DIR"
+          exit 1
+        fi
+        rm -rf "$DMG_MOUNT_DIR"
+        echo "DMG created at: $DMG_PATH"
+      else
+        echo "Expected DMG output not found at $DMG_GENERATED_PATH"
+        exit 1
+      fi
+    else
+      DMG_TEMP_PATH="$OUTPUT_DIR/$DMG_NAME-temp.dmg"
+      STAGING_DIR="$(mktemp -d)"
+      MOUNT_DIR="$(mktemp -d)"
+      DMG_WINDOW_WIDTH=640
+      DMG_WINDOW_HEIGHT=360
+      DMG_ICON_SIZE=96
+      DMG_APP_POS_X=160
+      DMG_APP_POS_Y=170
+      DMG_APPS_POS_X=480
+      DMG_APPS_POS_Y=170
+
+      echo "Creating DMG staging folder..."
+      rm -f "$DMG_TEMP_PATH" "$DMG_PATH"
+      mkdir -p "$OUTPUT_DIR"
+      cp -R "$APP_DIR" "$STAGING_DIR/"
+
+      if [[ "$GENERATE_DMG_BG" == "1" ]]; then
+        if [[ -f "$DMG_BG_SCRIPT" ]]; then
+          echo "Rendering DMG background..."
+          if ! swift "$DMG_BG_SCRIPT" "$DMG_BG_PATH" "$APP_NAME" "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT"; then
+            echo "Failed to render DMG background; continuing without background"
+            rm -f "$DMG_BG_PATH"
+          fi
+        else
+          echo "DMG background script not found; skipping"
         fi
       else
-        echo "DMG background script not found; skipping"
+        rm -f "$DMG_BG_PATH"
       fi
-    else
-      rm -f "$DMG_BG_PATH"
-    fi
 
-    if [[ -f "$DMG_BG_PATH" ]]; then
-      mkdir -p "$STAGING_DIR/.background"
-      cp "$DMG_BG_PATH" "$STAGING_DIR/.background/dmg-background.png"
-      chflags hidden "$STAGING_DIR/.background" || true
-    fi
-
-    if [[ "$USE_CREATE_DMG" == "1" ]] && command -v create-dmg >/dev/null; then
-      echo "Building DMG image with create-dmg..."
-      rm -f "$DMG_PATH"
-      if [[ -f "$STAGING_DIR/.background/dmg-background.png" ]]; then
-        create-dmg \
-          --volname "$APP_NAME" \
-          --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
-          --icon-size "$DMG_ICON_SIZE" \
-          --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
-          --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
-          --background "$STAGING_DIR/.background/dmg-background.png" \
-          "$DMG_PATH" \
-          "$STAGING_DIR"
-      else
-        create-dmg \
-          --volname "$APP_NAME" \
-          --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
-          --icon-size "$DMG_ICON_SIZE" \
-          --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
-          --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
-          "$DMG_PATH" \
-          "$STAGING_DIR"
+      if [[ -f "$DMG_BG_PATH" ]]; then
+        mkdir -p "$STAGING_DIR/.background"
+        cp "$DMG_BG_PATH" "$STAGING_DIR/.background/dmg-background.png"
+        chflags hidden "$STAGING_DIR/.background" || true
       fi
-      rm -rf "$STAGING_DIR" "$MOUNT_DIR"
-      echo "DMG created at: $DMG_PATH"
-    else
+
       ln -s /Applications "$STAGING_DIR/Applications"
       echo "Building DMG image..."
       hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDRW "$DMG_TEMP_PATH"
