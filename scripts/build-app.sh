@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$ROOT_DIR/scripts/build-config.sh"
+
+if [[ -f "$CONFIG_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$CONFIG_FILE"
+fi
 BUILD_DIR="$ROOT_DIR/.build/release"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
@@ -17,6 +23,8 @@ DMG_BG_PATH="$OUTPUT_DIR/dmg-background.png"
 CONFIGURE_DMG="${CONFIGURE_DMG:-0}"
 USE_CREATE_DMG="${USE_CREATE_DMG:-1}"
 GENERATE_DMG_BG="${GENERATE_DMG_BG:-1}"
+DMG_BG_SCALE="${DMG_BG_SCALE:-2}"
+APP_ICON_PATH="$ROOT_DIR/Sources/digger/Resources/AppIcon.icns"
 
 APP_DIR="$OUTPUT_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -115,7 +123,7 @@ if [[ "$CREATE_DMG" == "1" ]]; then
     if [[ "$GENERATE_DMG_BG" == "1" ]]; then
       if [[ -f "$DMG_BG_SCRIPT" ]]; then
         echo "Rendering DMG background..."
-        if ! swift "$DMG_BG_SCRIPT" "$DMG_BG_PATH" "$APP_NAME" "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT"; then
+        if ! swift "$DMG_BG_SCRIPT" "$DMG_BG_PATH" "$APP_NAME" "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" "$DMG_BG_SCALE"; then
           echo "Failed to render DMG background; continuing without background"
           rm -f "$DMG_BG_PATH"
         fi
@@ -135,11 +143,17 @@ if [[ "$CREATE_DMG" == "1" ]]; then
     if [[ "$USE_CREATE_DMG" == "1" ]] && command -v create-dmg >/dev/null; then
       echo "Building DMG image with create-dmg..."
       rm -f "$DMG_PATH"
+      if [[ ! -f "$APP_ICON_PATH" ]]; then
+        echo "App icon not found at $APP_ICON_PATH; cannot set DMG volume icon"
+        exit 1
+      fi
+      VOLICON_ARGS=(--volicon "$APP_ICON_PATH")
       if [[ -f "$STAGING_DIR/.background/dmg-background.png" ]]; then
         create-dmg \
           --volname "$APP_NAME" \
           --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
           --icon-size "$DMG_ICON_SIZE" \
+          "${VOLICON_ARGS[@]}" \
           --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
           --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
           --background "$STAGING_DIR/.background/dmg-background.png" \
@@ -150,6 +164,7 @@ if [[ "$CREATE_DMG" == "1" ]]; then
           --volname "$APP_NAME" \
           --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
           --icon-size "$DMG_ICON_SIZE" \
+          "${VOLICON_ARGS[@]}" \
           --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
           --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
           "$DMG_PATH" \
@@ -162,6 +177,18 @@ if [[ "$CREATE_DMG" == "1" ]]; then
       echo "Building DMG image..."
       hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDRW "$DMG_TEMP_PATH"
       hdiutil attach -mountpoint "$MOUNT_DIR" -noverify -nobrowse "$DMG_TEMP_PATH"
+
+      if [[ ! -f "$APP_ICON_PATH" ]]; then
+        echo "App icon not found at $APP_ICON_PATH; cannot set DMG volume icon"
+        exit 1
+      fi
+      if ! command -v SetFile >/dev/null; then
+        echo "SetFile not found; cannot set DMG volume icon"
+        exit 1
+      fi
+      echo "Setting DMG volume icon..."
+      cp "$APP_ICON_PATH" "$MOUNT_DIR/.VolumeIcon.icns"
+      SetFile -a C "$MOUNT_DIR"
 
       if [[ "$CONFIGURE_DMG" == "1" ]]; then
         echo "Configuring DMG window layout..."
