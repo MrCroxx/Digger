@@ -41,6 +41,9 @@ enum AppPreferences {
     static let defaultModel = "gpt-4.1-mini"
     static let defaultEndpoint = "https://api.openai.com/v1"
     static let defaultSystemPrompt = "Only return the result, without extra output."
+    static let defaultCustomFunctions: [CustomFunction] = [
+        CustomFunction(title: "Summary", prompt: "Summarize it in one sentence.")
+    ]
 
     static func apiKey() -> String {
         UserDefaults.standard.string(forKey: apiKeyKey) ?? ""
@@ -235,13 +238,13 @@ enum AppPreferences {
 
     static func customFunctions() -> [CustomFunction] {
         guard let data = UserDefaults.standard.data(forKey: customFunctionsKey) else {
-            return []
+            return defaultCustomFunctions
         }
         do {
             return try JSONDecoder().decode([CustomFunction].self, from: data)
         } catch {
             UserDefaults.standard.removeObject(forKey: customFunctionsKey)
-            return []
+            return defaultCustomFunctions
         }
     }
 
