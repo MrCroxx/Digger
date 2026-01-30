@@ -53,6 +53,9 @@ struct Digger {
             preferencesController.show()
         }
         let welcomeController = WelcomeWindowController()
+        welcomeController.onOpenPreferences = {
+            preferencesController.show()
+        }
         let menuController = MenuBarController(preferencesController: preferencesController, welcomeController: welcomeController)
         menuBarController = menuController
 

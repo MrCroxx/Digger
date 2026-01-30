@@ -10,16 +10,23 @@ final class WelcomeViewModel: ObservableObject {
             AppPreferences.setSkipWelcomeWhenReady(skipWelcomeWhenReady)
         }
     }
+    @Published var startOnLogin: Bool {
+        didSet {
+            applyStartOnLoginChange()
+        }
+    }
 
     var onStatusChange: ((PermissionStatus) -> Void)?
 
     private var timer: Timer?
+    private var isApplyingStartOnLogin = false
 
     init() {
         let current = PermissionChecker.currentStatus()
         status = current
         canStart = current.allGranted
         skipWelcomeWhenReady = AppPreferences.skipWelcomeWhenReady()
+        startOnLogin = AppPreferences.startOnLoginEnabled()
         startPolling()
     }
 
@@ -46,6 +53,21 @@ final class WelcomeViewModel: ObservableObject {
                 self?.refresh()
             }
         }
+    }
+
+    private func applyStartOnLoginChange() {
+        if isApplyingStartOnLogin {
+            return
+        }
+        isApplyingStartOnLogin = true
+        AppPreferences.setStartOnLoginEnabled(startOnLogin)
+        StartOnLoginManager.apply(enabled: startOnLogin)
+        let currentValue = StartOnLoginManager.isEnabled()
+        if currentValue != startOnLogin {
+            AppPreferences.setStartOnLoginEnabled(currentValue)
+            startOnLogin = currentValue
+        }
+        isApplyingStartOnLogin = false
     }
 
     deinit {}

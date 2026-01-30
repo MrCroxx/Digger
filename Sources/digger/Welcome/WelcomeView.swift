@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WelcomeView: View {
     @ObservedObject var viewModel: WelcomeViewModel
+    let onOpenPreferences: () -> Void
     let onStart: () -> Void
 
     var body: some View {
@@ -30,6 +31,9 @@ struct WelcomeView: View {
                 ) {
                     SystemPreferencesLinks.openTrackpad()
                 }
+                Toggle(UIStrings.Preferences.startOnLoginLabel, isOn: $viewModel.startOnLogin)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
                 Toggle(UIStrings.Welcome.skipNextTimeLabel, isOn: $viewModel.skipWelcomeWhenReady)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 12))
@@ -42,6 +46,10 @@ struct WelcomeView: View {
                     .font(.system(size: 12))
                     .foregroundColor(viewModel.status.allGranted ? .secondary : .orange)
                 Spacer()
+                Button(UIStrings.Menu.preferences) {
+                    onOpenPreferences()
+                }
+                .buttonStyle(.bordered)
                 Button(UIStrings.Welcome.startButton) {
                     onStart()
                 }
@@ -51,7 +59,7 @@ struct WelcomeView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 640, minHeight: 320)
+        .frame(minWidth: 640, minHeight: 360)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }

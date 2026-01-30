@@ -6,6 +6,7 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let viewModel: WelcomeViewModel
     var onReady: (() -> Void)?
+    var onOpenPreferences: (() -> Void)?
 
     override init() {
         viewModel = WelcomeViewModel()
@@ -17,9 +18,15 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
         )
         super.init()
 
-        let rootView = WelcomeView(viewModel: viewModel) { [weak self] in
-            self?.handleStart()
-        }
+        let rootView = WelcomeView(
+            viewModel: viewModel,
+            onOpenPreferences: { [weak self] in
+                self?.onOpenPreferences?()
+            },
+            onStart: { [weak self] in
+                self?.handleStart()
+            }
+        )
         let hostingController = NSHostingController(rootView: rootView)
         window.contentViewController = hostingController
         window.title = UIStrings.Welcome.title
