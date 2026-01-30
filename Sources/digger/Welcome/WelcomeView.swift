@@ -23,6 +23,16 @@ struct WelcomeView: View {
                 ) {
                     SystemPreferencesLinks.openAccessibility()
                 }
+                TipRow(
+                    title: UIStrings.Welcome.lookupDataDetectorsTitle,
+                    description: UIStrings.Welcome.lookupDataDetectorsDescription,
+                    actionTitle: UIStrings.Welcome.openTrackpadButton
+                ) {
+                    SystemPreferencesLinks.openTrackpad()
+                }
+                Toggle(UIStrings.Welcome.skipNextTimeLabel, isOn: $viewModel.skipWelcomeWhenReady)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
             }
 
             Spacer()
@@ -41,7 +51,7 @@ struct WelcomeView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 620, minHeight: 420)
+        .frame(minWidth: 640, minHeight: 320)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -65,6 +75,45 @@ private struct PermissionRow: View {
                 Text(description)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(actionTitle) {
+                action()
+            }
+            .controlSize(.small)
+        }
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor))
+        )
+    }
+}
+
+private struct TipRow: View {
+    let title: String
+    let description: String
+    let actionTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .foregroundColor(.secondary)
+                .font(.system(size: 18))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(description)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Button(actionTitle) {

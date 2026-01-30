@@ -23,6 +23,8 @@ enum AppPreferences {
     static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
     static let systemPromptKey = "SystemPrompt"
     static let welcomeCompletedKey = "WelcomeCompleted"
+    static let hasLaunchedBeforeKey = "HasLaunchedBefore"
+    static let skipWelcomeWhenReadyKey = "SkipWelcomeWhenReady"
     static let startOnLoginKey = "StartOnLogin"
 
     static let defaultThreshold: CGFloat = 3.0
@@ -256,6 +258,22 @@ enum AppPreferences {
 
     static func setWelcomeCompleted(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: welcomeCompletedKey)
+    }
+
+    static func hasLaunchedBefore() -> Bool {
+        UserDefaults.standard.bool(forKey: hasLaunchedBeforeKey)
+    }
+
+    static func setHasLaunchedBefore(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: hasLaunchedBeforeKey)
+    }
+
+    static func skipWelcomeWhenReady() -> Bool {
+        UserDefaults.standard.bool(forKey: skipWelcomeWhenReadyKey)
+    }
+
+    static func setSkipWelcomeWhenReady(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: skipWelcomeWhenReadyKey)
     }
 
     static func startOnLoginEnabled() -> Bool {

@@ -5,6 +5,11 @@ import Foundation
 final class WelcomeViewModel: ObservableObject {
     @Published private(set) var status: PermissionStatus
     @Published private(set) var canStart: Bool
+    @Published var skipWelcomeWhenReady: Bool {
+        didSet {
+            AppPreferences.setSkipWelcomeWhenReady(skipWelcomeWhenReady)
+        }
+    }
 
     var onStatusChange: ((PermissionStatus) -> Void)?
 
@@ -14,6 +19,7 @@ final class WelcomeViewModel: ObservableObject {
         let current = PermissionChecker.currentStatus()
         status = current
         canStart = current.allGranted
+        skipWelcomeWhenReady = AppPreferences.skipWelcomeWhenReady()
         startPolling()
     }
 

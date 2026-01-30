@@ -52,9 +52,9 @@ struct Digger {
         forceClickSelectionPopup.onOpenPreferences = {
             preferencesController.show()
         }
-        let menuController = MenuBarController(preferencesController: preferencesController)
-        menuBarController = menuController
         let welcomeController = WelcomeWindowController()
+        let menuController = MenuBarController(preferencesController: preferencesController, welcomeController: welcomeController)
+        menuBarController = menuController
 
         Task {
             for await touches in manager.touchDataStream {
@@ -86,7 +86,11 @@ struct Digger {
         }
         startEventTapIfNeeded()
 
-        if !AppPreferences.welcomeCompleted() || PermissionChecker.needsAttention() {
+        let firstLaunch = !AppPreferences.hasLaunchedBefore()
+        AppPreferences.setHasLaunchedBefore(true)
+        let needsAttention = PermissionChecker.needsAttention()
+        let shouldShowWelcome = firstLaunch || needsAttention || !AppPreferences.skipWelcomeWhenReady()
+        if shouldShowWelcome {
             welcomeController.show()
         }
 

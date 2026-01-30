@@ -28,6 +28,10 @@ enum SystemPreferencesLinks {
         open(urlString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
 
+    static func openTrackpad() {
+        open(urlString: "x-apple.systempreferences:com.apple.preference.trackpad?TrackpadPointing")
+    }
+
     private static func open(urlString: String) {
         guard let url = URL(string: urlString) else {
             return
