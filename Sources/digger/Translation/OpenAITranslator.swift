@@ -7,7 +7,7 @@ actor OpenAITranslator {
     init?() {
         guard let configuration = Self.configuration(
             apiKey: AppPreferences.apiKey(),
-            endpoint: AppPreferences.endpoint()
+            endpoint: AppPreferences.endpointOrDefault()
         ) else {
             return nil
         }

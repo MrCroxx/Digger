@@ -8,6 +8,9 @@ OUTPUT_DIR="$ROOT_DIR/dist"
 APP_NAME="${APP_NAME:-Digger}"
 BUNDLE_ID="${BUNDLE_ID:-com.digger.app}"
 VERSION="${VERSION:-1.0.0}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+NOTARIZE="${NOTARIZE:-0}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
 APP_DIR="$OUTPUT_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -78,3 +81,46 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
 EOF
 
 echo "App bundle created at: $APP_DIR"
+
+if [[ -n "$SIGN_IDENTITY" ]]; then
+  if ! command -v codesign >/dev/null; then
+    echo "codesign not found; skipping signing"
+    exit 1
+  fi
+
+  echo "Signing app with identity: $SIGN_IDENTITY"
+
+  if [[ -d "$FRAMEWORKS_DIR" ]]; then
+    for framework in "$FRAMEWORKS_DIR"/*.framework; do
+      if [[ -e "$framework" ]]; then
+        codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$framework"
+      fi
+    done
+  fi
+
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
+  codesign --verify --strict --verbose=2 "$APP_DIR"
+  echo "Signing complete"
+else
+  echo "SIGN_IDENTITY not set; app bundle is unsigned"
+fi
+
+if [[ "$NOTARIZE" == "1" ]]; then
+  if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "NOTARY_PROFILE not set; cannot notarize"
+    exit 1
+  fi
+  if ! command -v xcrun >/dev/null; then
+    echo "xcrun not found; cannot notarize"
+    exit 1
+  fi
+
+  ZIP_PATH="$OUTPUT_DIR/$APP_NAME.zip"
+  echo "Notarizing app with profile: $NOTARY_PROFILE"
+  rm -f "$ZIP_PATH"
+  ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+  xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$APP_DIR"
+  spctl -a -vv "$APP_DIR"
+  echo "Notarization complete"
+fi

@@ -62,7 +62,7 @@ final class PreferencesViewModel: ObservableObject {
         do {
             _ = try await OpenAITranslator.testConnection(
                 apiKey: apiKeyText,
-                endpoint: endpoint,
+                endpoint: AppPreferences.resolvedEndpoint(endpoint),
                 model: modelText
             )
             apiTestState = .success(UIStrings.Preferences.apiTestSuccess)

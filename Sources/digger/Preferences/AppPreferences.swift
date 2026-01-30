@@ -39,6 +39,7 @@ enum AppPreferences {
     static let defaultLanguage: AppLanguage = .english
     static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
     static let defaultModel = "gpt-4.1-mini"
+    static let defaultEndpoint = "https://api.openai.com/v1"
     static let defaultSystemPrompt = "Only return the result, without extra output."
 
     static func apiKey() -> String {
@@ -50,11 +51,29 @@ enum AppPreferences {
     }
 
     static func endpoint() -> String {
-        UserDefaults.standard.string(forKey: endpointKey) ?? ""
+        let stored = UserDefaults.standard.string(forKey: endpointKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stored ?? ""
     }
 
     static func setEndpoint(_ value: String) {
-        UserDefaults.standard.set(value, forKey: endpointKey)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: endpointKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: endpointKey)
+        }
+    }
+
+    static func endpointOrDefault() -> String {
+        resolvedEndpoint(endpoint())
+    }
+
+    static func resolvedEndpoint(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return defaultEndpoint
+        }
+        return trimmed
     }
 
     static func model() -> String {
