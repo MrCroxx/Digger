@@ -85,12 +85,12 @@ actor OpenAITranslator {
     }
 
     func translate(_ text: String) async throws -> String {
-        let prompt = PromptTemplates.translation(for: AppPreferences.translationTargetLanguage())
+        let prompt = PromptTemplates.defaultTranslationPrompt
         return try await runPrompt(prompt, text: text)
     }
 
     func translateStream(_ text: String) async throws -> AsyncThrowingStream<String, Error> {
-        let prompt = PromptTemplates.translation(for: AppPreferences.translationTargetLanguage())
+        let prompt = PromptTemplates.defaultTranslationPrompt
         return try await runPromptStream(prompt, text: text)
     }
 

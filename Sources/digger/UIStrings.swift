@@ -17,34 +17,6 @@ enum AppLanguage: String, CaseIterable {
     }
 }
 
-enum TranslationTargetLanguage: String, CaseIterable {
-    case english = "en"
-    case chineseSimplified = "zh-Hans"
-    case japanese = "ja"
-
-    var displayName: String {
-        switch self {
-        case .english:
-            return "English"
-        case .chineseSimplified:
-            return "简体中文"
-        case .japanese:
-            return "日本語"
-        }
-    }
-
-    var promptName: String {
-        switch self {
-        case .english:
-            return "English"
-        case .chineseSimplified:
-            return "Simplified Chinese"
-        case .japanese:
-            return "Japanese"
-        }
-    }
-}
-
 enum UIStrings {
     enum Key: String {
         case translationEmptyResult
@@ -79,7 +51,6 @@ enum UIStrings {
         case preferencesPopupShortcutLabel
         case preferencesPopupShortcutPlaceholder
         case preferencesLanguageLabel
-        case preferencesTargetLanguageLabel
         case preferencesStreamingLabel
         case preferencesStartOnLoginLabel
         case preferencesCustomFunctionsTitle
@@ -94,6 +65,7 @@ enum UIStrings {
         case preferencesFunctionTitlePlaceholder
         case preferencesFunctionPromptPlaceholder
         case preferencesFunctionDefaultTitle
+        case preferencesRestorePromptsLabel
         case preferencesApiTestLabel
         case preferencesApiTestButton
         case preferencesApiTestInProgress
@@ -167,7 +139,6 @@ enum UIStrings {
         static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
         static var popupShortcutPlaceholder: String { value(.preferencesPopupShortcutPlaceholder) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
-        static var targetLanguageLabel: String { value(.preferencesTargetLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
         static var startOnLoginLabel: String { value(.preferencesStartOnLoginLabel) }
         static var customFunctionsTitle: String { value(.preferencesCustomFunctionsTitle) }
@@ -182,6 +153,7 @@ enum UIStrings {
         static var functionTitlePlaceholder: String { value(.preferencesFunctionTitlePlaceholder) }
         static var functionPromptPlaceholder: String { value(.preferencesFunctionPromptPlaceholder) }
         static var functionDefaultTitle: String { value(.preferencesFunctionDefaultTitle) }
+        static var restorePromptsLabel: String { value(.preferencesRestorePromptsLabel) }
         static var apiTestLabel: String { value(.preferencesApiTestLabel) }
         static var apiTestButton: String { value(.preferencesApiTestButton) }
         static var apiTestInProgress: String { value(.preferencesApiTestInProgress) }
@@ -264,7 +236,6 @@ enum UIStrings {
             .preferencesPopupShortcutLabel: "Trigger Shortcut",
             .preferencesPopupShortcutPlaceholder: "Press shortcut",
             .preferencesLanguageLabel: "Language",
-            .preferencesTargetLanguageLabel: "Target Language",
             .preferencesStreamingLabel: "Stream Translation",
             .preferencesStartOnLoginLabel: "Start on Login",
             .preferencesCustomFunctionsTitle: "Custom Prompts",
@@ -279,6 +250,7 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "Function title",
             .preferencesFunctionPromptPlaceholder: "Enter prompt",
             .preferencesFunctionDefaultTitle: "New Function",
+            .preferencesRestorePromptsLabel: "Restore Prompts",
             .preferencesApiTestLabel: "Test API",
             .preferencesApiTestButton: "Test",
             .preferencesApiTestInProgress: "Testing…",
@@ -345,7 +317,6 @@ enum UIStrings {
             .preferencesPopupShortcutLabel: "触发快捷键",
             .preferencesPopupShortcutPlaceholder: "按下快捷键",
             .preferencesLanguageLabel: "语言",
-            .preferencesTargetLanguageLabel: "目标语言",
             .preferencesStreamingLabel: "流式译文",
             .preferencesStartOnLoginLabel: "登录时启动",
             .preferencesCustomFunctionsTitle: "自定义提示语",
@@ -360,6 +331,7 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "功能标题",
             .preferencesFunctionPromptPlaceholder: "输入 prompt",
             .preferencesFunctionDefaultTitle: "新功能",
+            .preferencesRestorePromptsLabel: "还原提示语",
             .preferencesApiTestLabel: "测试 API",
             .preferencesApiTestButton: "测试",
             .preferencesApiTestInProgress: "测试中…",
@@ -426,7 +398,6 @@ enum UIStrings {
             .preferencesPopupShortcutLabel: "トリガーショートカット",
             .preferencesPopupShortcutPlaceholder: "ショートカットを入力",
             .preferencesLanguageLabel: "言語",
-            .preferencesTargetLanguageLabel: "翻訳先",
             .preferencesStreamingLabel: "ストリーミング翻訳",
             .preferencesStartOnLoginLabel: "ログイン時に起動",
             .preferencesCustomFunctionsTitle: "カスタムプロンプト",
@@ -441,6 +412,7 @@ enum UIStrings {
             .preferencesFunctionTitlePlaceholder: "機能タイトル",
             .preferencesFunctionPromptPlaceholder: "プロンプトを入力",
             .preferencesFunctionDefaultTitle: "新規機能",
+            .preferencesRestorePromptsLabel: "プロンプトを復元",
             .preferencesApiTestLabel: "API テスト",
             .preferencesApiTestButton: "テスト",
             .preferencesApiTestInProgress: "テスト中…",

@@ -401,9 +401,6 @@ final class ForceClickSelectionPopup {
 
     func applyStrings() {
         originalTitleField.stringValue = UIStrings.Popup.originalTitle
-        if let translationIndex = functionSections.firstIndex(where: { $0.function.isTranslation }) {
-            functionSections[translationIndex].titleField.stringValue = UIStrings.Popup.translationTitle
-        }
         originalCopyButton.tooltipText = UIStrings.Popup.copyResult
         updateOriginalCollapseButton()
         for index in functionSections.indices {

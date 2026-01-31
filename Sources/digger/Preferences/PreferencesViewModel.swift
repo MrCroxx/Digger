@@ -3,7 +3,6 @@ import Foundation
 @MainActor
 final class PreferencesViewModel: ObservableObject {
     @Published var language: AppLanguage = AppPreferences.language()
-    @Published var targetLanguage: TranslationTargetLanguage = AppPreferences.translationTargetLanguage()
     @Published var streamingEnabled: Bool = AppPreferences.translationStreamingEnabled()
     @Published var popupFontSize: Double = Double(PopupFontPreferences.load())
     @Published var popupTooltipDelayText: String = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
@@ -24,7 +23,6 @@ final class PreferencesViewModel: ObservableObject {
 
     func refresh() {
         language = AppPreferences.language()
-        targetLanguage = AppPreferences.translationTargetLanguage()
         streamingEnabled = AppPreferences.translationStreamingEnabled()
         popupFontSize = Double(PopupFontPreferences.load())
         popupTooltipDelayText = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())

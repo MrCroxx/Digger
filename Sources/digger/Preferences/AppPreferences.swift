@@ -18,7 +18,6 @@ enum AppPreferences {
     static let popupShortcutModifiersKey = "PopupShortcutModifiers"
     static let translationStreamingKey = "TranslationStreaming"
     static let languageKey = "AppLanguage"
-    static let translationTargetLanguageKey = "TranslationTargetLanguage"
     static let customFunctionsKey = "CustomFunctions"
     static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
     static let systemPromptKey = "SystemPrompt"
@@ -37,11 +36,11 @@ enum AppPreferences {
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
     static let defaultTranslationStreaming = true
     static let defaultLanguage: AppLanguage = .english
-    static let defaultTranslationTargetLanguage: TranslationTargetLanguage = .chineseSimplified
     static let defaultModel = "gpt-4.1-mini"
     static let defaultEndpoint = "https://api.openai.com/v1"
     static let defaultSystemPrompt = "Only return the result, without extra output."
     static let defaultCustomFunctions: [CustomFunction] = [
+        CustomFunction(title: "Translation", prompt: PromptTemplates.defaultTranslationPrompt),
         CustomFunction(title: "Summary", prompt: "Summarize it in one sentence.")
     ]
 
@@ -227,15 +226,6 @@ enum AppPreferences {
         UserDefaults.standard.set(language.rawValue, forKey: languageKey)
     }
 
-    static func translationTargetLanguage() -> TranslationTargetLanguage {
-        let stored = UserDefaults.standard.string(forKey: translationTargetLanguageKey)
-        return TranslationTargetLanguage(rawValue: stored ?? "") ?? defaultTranslationTargetLanguage
-    }
-
-    static func setTranslationTargetLanguage(_ language: TranslationTargetLanguage) {
-        UserDefaults.standard.set(language.rawValue, forKey: translationTargetLanguageKey)
-    }
-
     static func customFunctions() -> [CustomFunction] {
         guard let data = UserDefaults.standard.data(forKey: customFunctionsKey) else {
             return defaultCustomFunctions
@@ -317,4 +307,5 @@ enum AppPreferences {
         clearCustomFunctions()
         UserDefaults.standard.set(true, forKey: customFunctionsClearedKey)
     }
+
 }

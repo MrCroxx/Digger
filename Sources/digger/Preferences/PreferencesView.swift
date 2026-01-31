@@ -96,9 +96,6 @@ struct PreferencesView: View {
             AppPreferences.setLanguage(newValue)
             onLanguageChange()
         }
-        .onChange(of: viewModel.targetLanguage) { newValue in
-            AppPreferences.setTranslationTargetLanguage(newValue)
-        }
         .onChange(of: viewModel.streamingEnabled) { newValue in
             AppPreferences.setTranslationStreamingEnabled(newValue)
         }
@@ -185,17 +182,6 @@ struct PreferencesView: View {
                 .frame(maxWidth: 220)
             } label: {
                 preferenceLabel(UIStrings.Preferences.languageLabel)
-            }
-            LabeledContent {
-                Picker("", selection: $viewModel.targetLanguage) {
-                    ForEach(TranslationTargetLanguage.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(language)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 220)
-            } label: {
-                preferenceLabel(UIStrings.Preferences.targetLanguageLabel)
             }
             Toggle(isOn: $viewModel.streamingEnabled) {
                 preferenceLabel(UIStrings.Preferences.streamingLabel)
@@ -326,6 +312,14 @@ struct PreferencesView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(minHeight: 180)
+                HStack {
+                    Button(UIStrings.Preferences.restorePromptsLabel) {
+                        restorePrompts()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Spacer()
+                }
             }
         }
     }
@@ -338,7 +332,7 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .pressureThreshold)
             } label: {
-                preferenceLabel("FORCE_CLICK_PRESSURE_THRESHOLD")
+                preferenceLongLabel("FORCE_CLICK_PRESSURE_THRESHOLD")
             }
             LabeledContent {
                 TextField("", text: $viewModel.pressureDeltaText)
@@ -346,7 +340,7 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .pressureDelta)
             } label: {
-                preferenceLabel("FORCE_CLICK_PRESSURE_DELTA")
+                preferenceLongLabel("FORCE_CLICK_PRESSURE_DELTA")
             }
             LabeledContent {
                 TextField("", text: $viewModel.baselineWindowText)
@@ -354,7 +348,7 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .baselineWindow)
             } label: {
-                preferenceLabel("FORCE_CLICK_BASELINE_WINDOW_MS")
+                preferenceLongLabel("FORCE_CLICK_BASELINE_WINDOW_MS")
             }
         }
     }
@@ -441,6 +435,11 @@ struct PreferencesView: View {
         let newFunction = CustomFunction(title: UIStrings.Preferences.functionDefaultTitle, prompt: "")
         viewModel.customFunctions.append(newFunction)
         viewModel.selectedFunctionID = newFunction.id
+    }
+
+    private func restorePrompts() {
+        viewModel.customFunctions = AppPreferences.defaultCustomFunctions
+        viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
     }
 
     private func removeFunction(_ id: UUID) {
@@ -616,4 +615,11 @@ private func preferenceLabel(_ text: String) -> some View {
     Text(text)
         .lineLimit(1)
         .frame(width: 220, alignment: .leading)
+}
+
+private func preferenceLongLabel(_ text: String) -> some View {
+    Text(text)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 260, alignment: .leading)
 }
