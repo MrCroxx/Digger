@@ -61,7 +61,7 @@ Functions are unlimited and can be added or removed. Each function maps to a reg
 ## Behavior Details
 
 1. **Add function**
-   - Clicking `+` appends a new function with a default title and empty prompt.
+   - Clicking `+` appends a new prompt with a default title and empty prompt.
    - The table selects and scrolls to the new row.
 
 2. **Remove function**
