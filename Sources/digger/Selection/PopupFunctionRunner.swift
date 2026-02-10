@@ -60,8 +60,8 @@ final class PopupFunctionRunner: @unchecked Sendable {
             let stream = try await translator.runPromptStream(prompt, text: text)
             var accumulated = ""
             var pending = ""
-            let updateInterval: TimeInterval = 0.02
-            let minFlushCharacters = 48
+            let updateInterval: TimeInterval = 0.033
+            let minFlushCharacters = 72
             var lastUpdate = ProcessInfo.processInfo.systemUptime
             await markStreamingStarted(for: function, context: context)
             for try await delta in stream {

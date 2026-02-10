@@ -27,7 +27,7 @@ final class DraggableScrollView: NSScrollView {
         if let contentView = documentView {
             let contentPoint = contentView.convert(point, from: self)
             let hitView = contentView.hitTest(contentPoint)
-            if findSelectableTextField(from: hitView) != nil {
+            if findSelectableTextView(from: hitView) != nil {
                 super.mouseDown(with: event)
                 return
             }
@@ -35,15 +35,24 @@ final class DraggableScrollView: NSScrollView {
         window?.performDrag(with: event)
     }
 
-    private func findSelectableTextField(from view: NSView?) -> NSTextField? {
+    private func findSelectableTextView(from view: NSView?) -> NSView? {
         var current = view
         while let currentView = current {
             if let textField = currentView as? NSTextField, textField.isSelectable {
                 return textField
             }
+            if let textView = currentView as? NSTextView, textView.isSelectable {
+                return textView
+            }
             current = currentView.superview
         }
         return nil
+    }
+}
+
+final class PopupResultTextView: NSTextView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 }
 
@@ -152,6 +161,13 @@ final class HoverTooltipWindow: NSWindow {
 
 @MainActor
 final class ForceClickSelectionPopup {
+    private struct TextMeasurementCacheEntry {
+        let revision: UInt64
+        let maxWidth: CGFloat
+        let fontPointSize: CGFloat
+        let size: CGSize
+    }
+
     private let window: PopupWindow
     private let originalTitleField: NSTextField
     private let originalTextField: NSTextField
@@ -186,16 +202,24 @@ final class ForceClickSelectionPopup {
     private var pendingLayoutAnimate = false
     private var lastWindowFrame: NSRect?
     private let layoutDebounceInterval: TimeInterval = 0.08
+    private let streamingLayoutDebounceInterval: TimeInterval = 0.12
+    private let streamingFadeInterval: TimeInterval = 0.08
+    private let streamingFadeDuration: CFTimeInterval = 0.08
+    private var streamFadeTimestamps: [UUID: TimeInterval] = [:]
+    private var textMeasurementCache: [ObjectIdentifier: TextMeasurementCacheEntry] = [:]
+    private var nextTextRevision: UInt64 = 1
+    private var originalTextRevision: UInt64 = 0
 
     private struct FunctionSection {
         let function: PopupFunction
         let titleField: NSTextField
-        let textField: NSTextField
+        let textView: PopupResultTextView
         let collapseButton: HoverableIconButton
         let copyButton: HoverableIconButton
         let dividerView: NSView
         var isLoading: Bool
         var isCollapsed: Bool
+        var textRevision: UInt64
     }
 
     init() {
@@ -217,6 +241,7 @@ final class ForceClickSelectionPopup {
         originalTextField.maximumNumberOfLines = 0
         originalTextField.cell?.wraps = true
         originalTextField.cell?.usesSingleLineMode = false
+        originalTextField.wantsLayer = true
 
         originalCopyButton = ForceClickSelectionPopup.makeIconButton(
             symbolName: "doc.on.doc",
@@ -340,6 +365,7 @@ final class ForceClickSelectionPopup {
         lastAnchorLocation = location
         cancelPendingLayoutUpdate()
         originalTextField.stringValue = trimmedOriginal
+        originalTextRevision = takeNextTextRevision()
         originalIsCollapsed = AppPreferences.popupOriginalCollapsed()
         originalTextField.isHidden = originalIsCollapsed
         updateOriginalCollapseButton()
@@ -363,9 +389,13 @@ final class ForceClickSelectionPopup {
             ? result.trimmingCharacters(in: .whitespacesAndNewlines)
             : result
         lastAnchorLocation = location
-        updateFunctionSection(functionID: functionID, text: updatedResult, isFinal: isFinal)
+        let didUpdate = updateFunctionSection(functionID: functionID, text: updatedResult, isFinal: isFinal)
+        guard didUpdate else {
+            return
+        }
         updateActionButtons()
-        scheduleLayoutUpdate(near: location, animated: isFinal)
+        let shouldAnimate = isFinal && !functionSections.contains(where: { $0.isLoading })
+        scheduleLayoutUpdate(near: location, animated: shouldAnimate, streaming: !isFinal)
     }
 
     func markStreamingStarted(for requestID: UUID, functionID: UUID, near location: CGPoint) {
@@ -373,13 +403,21 @@ final class ForceClickSelectionPopup {
               let index = functionSections.firstIndex(where: { $0.function.id == functionID }) else {
             return
         }
+        let previousLoading = functionSections[index].isLoading
+        let previousText = functionSections[index].textView.string
         functionSections[index].isLoading = false
-        functionSections[index].textField.stringValue = ""
+        if !previousText.isEmpty {
+            replaceResultText(in: functionSections[index].textView, with: "")
+            functionSections[index].textRevision = takeNextTextRevision()
+        }
+        guard previousLoading || !previousText.isEmpty else {
+            return
+        }
         if !functionSections.contains(where: { $0.isLoading }) {
             stopLoadingAnimation()
         }
         updateActionButtons()
-        scheduleLayoutUpdate(near: location, animated: false)
+        scheduleLayoutUpdate(near: location, animated: false, streaming: true)
     }
 
     func applyPopupTextSize(_ textSize: CGFloat) {
@@ -390,8 +428,10 @@ final class ForceClickSelectionPopup {
         modelLabelField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
         for index in functionSections.indices {
             functionSections[index].titleField.font = NSFont.systemFont(ofSize: baseTitleSize * scale, weight: .semibold)
-            functionSections[index].textField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+            let font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+            applyResultTextViewStyle(functionSections[index].textView, font: font)
         }
+        textMeasurementCache.removeAll()
 
         if window.isVisible, let location = lastAnchorLocation {
             let contentSize = layoutContent(near: location)
@@ -427,9 +467,10 @@ final class ForceClickSelectionPopup {
         let collapsedIDs = AppPreferences.popupCollapsedFunctionIDs()
         let needsRebuild = ids != functionIDs
         if needsRebuild {
+            textMeasurementCache.removeAll()
             for section in functionSections {
                 section.titleField.removeFromSuperview()
-                section.textField.removeFromSuperview()
+                section.textView.removeFromSuperview()
                 section.collapseButton.removeFromSuperview()
                 section.copyButton.removeFromSuperview()
                 section.dividerView.removeFromSuperview()
@@ -445,17 +486,35 @@ final class ForceClickSelectionPopup {
                 titleField.isEditable = false
                 titleField.isSelectable = false
 
-                let textField = NSTextField(labelWithString: "")
-                textField.font = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
-                textField.textColor = .labelColor
-                textField.backgroundColor = .clear
-                textField.isEditable = false
-                textField.isSelectable = true
-                textField.lineBreakMode = .byWordWrapping
-                textField.maximumNumberOfLines = 0
-                textField.cell?.wraps = true
-                textField.cell?.usesSingleLineMode = false
-                textField.isHidden = isCollapsed
+                let textContainer = NSTextContainer(
+                    size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+                )
+                textContainer.lineFragmentPadding = 0
+                textContainer.widthTracksTextView = true
+                textContainer.heightTracksTextView = false
+                let layoutManager = NSLayoutManager()
+                layoutManager.addTextContainer(textContainer)
+                let textStorage = NSTextStorage()
+                textStorage.addLayoutManager(layoutManager)
+                let textView = PopupResultTextView(frame: .zero, textContainer: textContainer)
+                textView.drawsBackground = false
+                textView.isEditable = false
+                textView.isSelectable = true
+                textView.isRichText = false
+                textView.importsGraphics = false
+                textView.textContainerInset = NSSize(width: 0, height: 0)
+                textView.isHorizontallyResizable = false
+                textView.isVerticallyResizable = false
+                textView.maxSize = CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+                textView.minSize = NSSize(width: 0, height: 0)
+                textView.string = ""
+                textView.isHidden = isCollapsed
+                textView.wantsLayer = true
+                let textFont = NSFont.systemFont(ofSize: baseTextSize * scale, weight: .medium)
+                applyResultTextViewStyle(textView, font: textFont)
 
                 let collapseButton = ForceClickSelectionPopup.makeIconButton(
                     symbolName: isCollapsed ? "chevron.right" : "chevron.down",
@@ -489,66 +548,201 @@ final class ForceClickSelectionPopup {
 
                 documentView.addSubview(dividerView)
                 documentView.addSubview(titleField)
-                documentView.addSubview(textField)
+                documentView.addSubview(textView)
                 documentView.addSubview(collapseButton)
                 documentView.addSubview(copyButton)
 
                 functionSections.append(FunctionSection(
                     function: function,
                     titleField: titleField,
-                    textField: textField,
+                    textView: textView,
                     collapseButton: collapseButton,
                     copyButton: copyButton,
                     dividerView: dividerView,
                     isLoading: true,
-                    isCollapsed: isCollapsed
+                    isCollapsed: isCollapsed,
+                    textRevision: takeNextTextRevision()
                 ))
             }
         } else {
             for index in functionSections.indices {
                 let isCollapsed = collapsedIDs.contains(functions[index].id)
                 functionSections[index].titleField.stringValue = functions[index].title
-                functionSections[index].textField.isHidden = isCollapsed
+                functionSections[index].textView.isHidden = isCollapsed
                 updateCollapseButton(for: index, isCollapsed: isCollapsed)
                 let current = functionSections[index]
                 functionSections[index] = FunctionSection(
                     function: functions[index],
                     titleField: current.titleField,
-                    textField: current.textField,
+                    textView: current.textView,
                     collapseButton: current.collapseButton,
                     copyButton: current.copyButton,
                     dividerView: current.dividerView,
                     isLoading: current.isLoading,
-                    isCollapsed: isCollapsed
+                    isCollapsed: isCollapsed,
+                    textRevision: current.textRevision
                 )
             }
         }
     }
 
-    private func updateFunctionSection(functionID: UUID, text: String, isFinal: Bool) {
+    @discardableResult
+    private func updateFunctionSection(functionID: UUID, text: String, isFinal: Bool) -> Bool {
         guard let index = functionSections.firstIndex(where: { $0.function.id == functionID }) else {
-            return
+            return false
         }
-        functionSections[index].textField.stringValue = text
-        if isFinal {
-            functionSections[index].isLoading = false
-            if !functionSections.contains(where: { $0.isLoading }) {
-                stopLoadingAnimation()
+        var section = functionSections[index]
+        var didChange = false
+        let currentText = section.textView.string
+        if currentText != text {
+            if let delta = streamingDelta(current: currentText, incoming: text), !delta.isEmpty {
+                appendResultText(in: section.textView, delta: delta)
+            } else {
+                replaceResultText(in: section.textView, with: text)
             }
+            section.textRevision = takeNextTextRevision()
+            didChange = true
+            applyStreamingFadeIfNeeded(to: section.textView, functionID: functionID, isFinal: isFinal)
+        }
+        let previousLoading = section.isLoading
+        if isFinal {
+            section.isLoading = false
         } else {
             let hasContent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            functionSections[index].isLoading = !hasContent
-            if hasContent, !functionSections.contains(where: { $0.isLoading }) {
-                stopLoadingAnimation()
-            }
+            section.isLoading = !hasContent
         }
+        if section.isLoading != previousLoading {
+            didChange = true
+        }
+        functionSections[index] = section
+        if !functionSections.contains(where: { $0.isLoading }) {
+            stopLoadingAnimation()
+        }
+        return didChange
+    }
+
+    private func applyResultTextViewStyle(_ textView: PopupResultTextView, font: NSFont) {
+        textView.font = font
+        textView.textColor = .labelColor
+        textView.typingAttributes = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor
+        ]
+        let fullRange = NSRange(location: 0, length: textView.string.utf16.count)
+        if fullRange.length > 0, let storage = textView.textStorage {
+            storage.beginEditing()
+            storage.setAttributes(textView.typingAttributes, range: fullRange)
+            storage.endEditing()
+        }
+    }
+
+    private func replaceResultText(in textView: PopupResultTextView, with text: String) {
+        textView.string = text
+    }
+
+    private func appendResultText(in textView: PopupResultTextView, delta: String) {
+        guard !delta.isEmpty else {
+            return
+        }
+        let attributes = textView.typingAttributes
+        let appended = NSAttributedString(string: delta, attributes: attributes)
+        textView.textStorage?.append(appended)
+    }
+
+    private func streamingDelta(current: String, incoming: String) -> String? {
+        guard !current.isEmpty, incoming.count >= current.count, incoming.hasPrefix(current) else {
+            return nil
+        }
+        return String(incoming.dropFirst(current.count))
+    }
+
+    private func takeNextTextRevision() -> UInt64 {
+        defer { nextTextRevision += 1 }
+        return nextTextRevision
+    }
+
+    private func measuredTextSize(for textField: NSTextField, maxWidth: CGFloat, revision: UInt64) -> CGSize {
+        let key = ObjectIdentifier(textField)
+        let fontPointSize = textField.font?.pointSize ?? baseTextSize
+        if let cached = textMeasurementCache[key],
+           cached.revision == revision,
+           abs(cached.maxWidth - maxWidth) < 0.5,
+           abs(cached.fontPointSize - fontPointSize) < 0.01 {
+            return cached.size
+        }
+        let font = textField.font ?? NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let attributed = NSAttributedString(string: textField.stringValue, attributes: attributes)
+        let boundingRect = attributed.boundingRect(
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let measured = CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height) + 4)
+        textMeasurementCache[key] = TextMeasurementCacheEntry(
+            revision: revision,
+            maxWidth: maxWidth,
+            fontPointSize: fontPointSize,
+            size: measured
+        )
+        return measured
+    }
+
+    private func measuredTextSize(for textView: PopupResultTextView, maxWidth: CGFloat, revision: UInt64) -> CGSize {
+        let key = ObjectIdentifier(textView)
+        let fontPointSize = textView.font?.pointSize ?? baseTextSize
+        if let cached = textMeasurementCache[key],
+           cached.revision == revision,
+           abs(cached.maxWidth - maxWidth) < 0.5,
+           abs(cached.fontPointSize - fontPointSize) < 0.01 {
+            return cached.size
+        }
+        let measured: CGSize
+        if let textContainer = textView.textContainer,
+           let layoutManager = textView.layoutManager {
+            textContainer.containerSize = CGSize(width: maxWidth, height: .greatestFiniteMagnitude)
+            layoutManager.ensureLayout(for: textContainer)
+            let usedRect = layoutManager.usedRect(for: textContainer)
+            measured = CGSize(width: ceil(usedRect.width), height: ceil(usedRect.height) + 4)
+        } else {
+            let font = textView.font ?? NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font]
+            let attributed = NSAttributedString(string: textView.string, attributes: attributes)
+            let boundingRect = attributed.boundingRect(
+                with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            )
+            measured = CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height) + 4)
+        }
+        textMeasurementCache[key] = TextMeasurementCacheEntry(
+            revision: revision,
+            maxWidth: maxWidth,
+            fontPointSize: fontPointSize,
+            size: measured
+        )
+        return measured
+    }
+
+    private func applyStreamingFadeIfNeeded(to textView: PopupResultTextView, functionID: UUID, isFinal: Bool) {
+        guard !isFinal else {
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let last = streamFadeTimestamps[functionID], now - last < streamingFadeInterval {
+            return
+        }
+        streamFadeTimestamps[functionID] = now
+        textView.wantsLayer = true
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = streamingFadeDuration
+        transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        textView.layer?.add(transition, forKey: "streamFade")
     }
 
     private func layoutContent(near location: CGPoint?) -> CGSize {
 
         let padding = CGSize(width: 10, height: 8)
         let minWidth: CGFloat = 120
-        let baseMaxWidth: CGFloat = 320
         let controlsHeight: CGFloat = 18
         let controlsSpacing: CGFloat = 6
         let headerLabelSpacing: CGFloat = 8
@@ -567,17 +761,6 @@ final class ForceClickSelectionPopup {
         let sectionButtonSize: CGFloat = 16
         let sectionButtonSpacing: CGFloat = 4
         let paddingLeft = padding.width
-
-        func textSize(for textField: NSTextField, maxWidth: CGFloat) -> CGSize {
-            let font = textField.font ?? NSFont.systemFont(ofSize: 12, weight: .medium)
-            let attributes: [NSAttributedString.Key: Any] = [.font: font]
-            let attributed = NSAttributedString(string: textField.stringValue, attributes: attributes)
-            let boundingRect = attributed.boundingRect(
-                with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading]
-            )
-            return CGSize(width: ceil(boundingRect.width), height: ceil(boundingRect.height) + 4)
-        }
 
         let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
@@ -601,14 +784,18 @@ final class ForceClickSelectionPopup {
         ) -> (contentWidth: CGFloat, contentHeight: CGFloat, sizes: (CGSize, CGSize, [CGSize], [CGSize])) {
             let originalTitleSize = (originalTitleField.stringValue as NSString).size(withAttributes: titleAttributes)
             let textMaxWidth = maxWidth - paddingLeft - paddingRight
-            let originalTextSize = originalIsCollapsed ? .zero : textSize(for: originalTextField, maxWidth: textMaxWidth)
+            let originalTextSize = originalIsCollapsed
+                ? .zero
+                : measuredTextSize(for: originalTextField, maxWidth: textMaxWidth, revision: originalTextRevision)
             var sectionTitleSizes: [CGSize] = []
             var sectionTextSizes: [CGSize] = []
             sectionTitleSizes.reserveCapacity(functionSections.count)
             sectionTextSizes.reserveCapacity(functionSections.count)
             for section in functionSections {
                 let titleSize = (section.titleField.stringValue as NSString).size(withAttributes: titleAttributes)
-                let textSizeValue = section.isCollapsed ? .zero : textSize(for: section.textField, maxWidth: textMaxWidth)
+                let textSizeValue = section.isCollapsed
+                    ? .zero
+                    : measuredTextSize(for: section.textView, maxWidth: textMaxWidth, revision: section.textRevision)
                 sectionTitleSizes.append(titleSize)
                 sectionTextSizes.append(textSizeValue)
             }
@@ -626,11 +813,15 @@ final class ForceClickSelectionPopup {
             )
             let adjustedTextMaxWidth = contentWidth - paddingLeft - paddingRight
             if abs(adjustedTextMaxWidth - textMaxWidth) > 0.5 {
-                let adjustedOriginalTextSize = originalIsCollapsed ? .zero : textSize(for: originalTextField, maxWidth: adjustedTextMaxWidth)
+                let adjustedOriginalTextSize = originalIsCollapsed
+                    ? .zero
+                    : measuredTextSize(for: originalTextField, maxWidth: adjustedTextMaxWidth, revision: originalTextRevision)
                 var adjustedSectionTextSizes: [CGSize] = []
                 adjustedSectionTextSizes.reserveCapacity(functionSections.count)
                 for section in functionSections {
-                    let adjustedSize = section.isCollapsed ? .zero : textSize(for: section.textField, maxWidth: adjustedTextMaxWidth)
+                    let adjustedSize = section.isCollapsed
+                        ? .zero
+                        : measuredTextSize(for: section.textView, maxWidth: adjustedTextMaxWidth, revision: section.textRevision)
                     adjustedSectionTextSizes.append(adjustedSize)
                 }
                 return (
@@ -695,23 +886,13 @@ final class ForceClickSelectionPopup {
         }
 
         var paddingRight = padding.width
-        var targetMaxWidth = min(maxWidthLimit, max(baseMaxWidth, headerMinWidth))
+        let targetMaxWidth = maxWidthLimit
         var measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
-        let widthStep: CGFloat = 40
-        while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
-            targetMaxWidth = min(targetMaxWidth + widthStep, maxWidthLimit)
-            measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
-        }
 
         let needsVerticalScroll = measurement.contentHeight > maxHeightLimit
         if needsVerticalScroll {
             paddingRight = padding.width + scrollerClearance
-            targetMaxWidth = min(maxWidthLimit, max(targetMaxWidth, headerMinWidth))
             measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
-            while measurement.contentHeight > maxHeightLimit && targetMaxWidth < maxWidthLimit {
-                targetMaxWidth = min(targetMaxWidth + widthStep, maxWidthLimit)
-                measurement = measureLayout(maxWidth: targetMaxWidth, paddingRight: paddingRight)
-            }
         }
 
         let contentWidth = measurement.contentWidth
@@ -727,7 +908,7 @@ final class ForceClickSelectionPopup {
         let availableWidth = contentWidth - paddingLeft - paddingRight
         originalTextField.preferredMaxLayoutWidth = availableWidth
         for section in functionSections {
-            section.textField.preferredMaxLayoutWidth = availableWidth
+            section.textView.textContainer?.containerSize = CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
         }
 
         var y = contentHeight - padding.height - ceil(originalTitleSize.height)
@@ -801,7 +982,7 @@ final class ForceClickSelectionPopup {
             let textHeight = isCollapsed ? 0 : max(ceil(textSizeValue.height), 16)
             let spacing = isCollapsed ? 0 : titleTextSpacing
             y -= spacing + textHeight
-            section.textField.frame = NSRect(
+            section.textView.frame = NSRect(
                 x: textX,
                 y: y,
                 width: availableWidth,
@@ -861,7 +1042,7 @@ final class ForceClickSelectionPopup {
         lastWindowFrame = frame
     }
 
-    private func scheduleLayoutUpdate(near location: CGPoint, animated: Bool) {
+    private func scheduleLayoutUpdate(near location: CGPoint, animated: Bool, streaming: Bool = false) {
         guard window.isVisible else {
             return
         }
@@ -872,7 +1053,8 @@ final class ForceClickSelectionPopup {
             return
         }
         if layoutUpdateTimer == nil {
-            layoutUpdateTimer = Timer.scheduledTimer(withTimeInterval: layoutDebounceInterval, repeats: false) { [weak self] _ in
+            let interval = streaming ? streamingLayoutDebounceInterval : layoutDebounceInterval
+            layoutUpdateTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
                 Task { @MainActor in
                     self?.performPendingLayoutUpdate()
                 }
@@ -928,9 +1110,12 @@ final class ForceClickSelectionPopup {
         currentRequestID = nil
         lastAnchorLocation = nil
         originalTextField.stringValue = ""
+        originalTextRevision = takeNextTextRevision()
+        streamFadeTimestamps.removeAll()
         for index in functionSections.indices {
-            functionSections[index].textField.stringValue = ""
+            replaceResultText(in: functionSections[index].textView, with: "")
             functionSections[index].isLoading = false
+            functionSections[index].textRevision = takeNextTextRevision()
         }
         updateActionButtons()
     }
@@ -944,16 +1129,17 @@ final class ForceClickSelectionPopup {
         let dots = String(repeating: "·", count: loadingDotCount)
         let loadingText = UIStrings.Popup.processingPrefix + dots
         for index in functionSections.indices where functionSections[index].isLoading {
-            let existing = functionSections[index].textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let existing = functionSections[index].textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
             if existing.isEmpty {
-                functionSections[index].textField.stringValue = loadingText
+                replaceResultText(in: functionSections[index].textView, with: loadingText)
+                functionSections[index].textRevision = takeNextTextRevision()
             }
         }
     }
 
     private func updateActionButtons() {
         let hasAnyResult = functionSections.contains {
-            !$0.isLoading && !$0.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !$0.isLoading && !$0.textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         copyAllButton.isEnabled = hasAnyResult
         let enabledAlpha: CGFloat = 1
@@ -964,7 +1150,7 @@ final class ForceClickSelectionPopup {
         originalCopyButton.alphaValue = originalHasText ? enabledAlpha : disabledAlpha
         for section in functionSections {
             let hasResult = !section.isLoading
-                && !section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             section.copyButton.isEnabled = hasResult
             section.copyButton.alphaValue = hasResult ? enabledAlpha : disabledAlpha
         }
@@ -1036,7 +1222,7 @@ final class ForceClickSelectionPopup {
             sections.append("\(UIStrings.Popup.originalTitle)\n\(original)")
         }
         for section in functionSections where !section.isLoading {
-            let result = section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result = section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !result.isEmpty else {
                 continue
             }
@@ -1070,7 +1256,7 @@ final class ForceClickSelectionPopup {
               !section.isLoading else {
             return
         }
-        let text = section.textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         if copyToPasteboard(text) {
             showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: sender)
         }
@@ -1152,7 +1338,7 @@ final class ForceClickSelectionPopup {
 
     private func setSectionCollapsed(index: Int, isCollapsed: Bool, persist: Bool) {
         functionSections[index].isCollapsed = isCollapsed
-        functionSections[index].textField.isHidden = isCollapsed
+        functionSections[index].textView.isHidden = isCollapsed
         updateCollapseButton(for: index, isCollapsed: isCollapsed)
         if persist {
             AppPreferences.setPopupFunctionCollapsed(functionSections[index].function.id, isCollapsed: isCollapsed)
