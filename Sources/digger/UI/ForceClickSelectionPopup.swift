@@ -214,11 +214,13 @@ final class ForceClickSelectionPopup {
         let function: PopupFunction
         let titleField: NSTextField
         let textView: PopupResultTextView
+        let cacheHitButton: HoverableIconButton
         let collapseButton: HoverableIconButton
         let copyButton: HoverableIconButton
         let dividerView: NSView
         var isLoading: Bool
         var isCollapsed: Bool
+        var isCacheHit: Bool
         var textRevision: UInt64
     }
 
@@ -372,6 +374,7 @@ final class ForceClickSelectionPopup {
         configureFunctionSections(functions)
         for index in functionSections.indices {
             functionSections[index].isLoading = true
+            functionSections[index].isCacheHit = false
         }
         startLoadingAnimation()
         updateActionButtons()
@@ -381,7 +384,14 @@ final class ForceClickSelectionPopup {
         window.makeKeyAndOrderFront(nil)
     }
 
-    func updateResult(_ result: String, for requestID: UUID, functionID: UUID, near location: CGPoint, isFinal: Bool) {
+    func updateResult(
+        _ result: String,
+        for requestID: UUID,
+        functionID: UUID,
+        near location: CGPoint,
+        isFinal: Bool,
+        isCacheHit: Bool
+    ) {
         guard currentRequestID == requestID else {
             return
         }
@@ -389,12 +399,17 @@ final class ForceClickSelectionPopup {
             ? result.trimmingCharacters(in: .whitespacesAndNewlines)
             : result
         lastAnchorLocation = location
-        let didUpdate = updateFunctionSection(functionID: functionID, text: updatedResult, isFinal: isFinal)
+        let didUpdate = updateFunctionSection(
+            functionID: functionID,
+            text: updatedResult,
+            isFinal: isFinal,
+            isCacheHit: isCacheHit
+        )
         guard didUpdate else {
             return
         }
         updateActionButtons()
-        let shouldAnimate = isFinal && !functionSections.contains(where: { $0.isLoading })
+        let shouldAnimate = isFinal && !isCacheHit && !functionSections.contains(where: { $0.isLoading })
         scheduleLayoutUpdate(near: location, animated: shouldAnimate, streaming: !isFinal)
     }
 
@@ -445,6 +460,7 @@ final class ForceClickSelectionPopup {
         updateOriginalCollapseButton()
         for index in functionSections.indices {
             functionSections[index].copyButton.tooltipText = UIStrings.Popup.copyResult
+            functionSections[index].cacheHitButton.tooltipText = UIStrings.Popup.cacheHit
             updateCollapseButton(for: index)
         }
         copyAllButton.tooltipText = UIStrings.Popup.copyAll
@@ -471,6 +487,7 @@ final class ForceClickSelectionPopup {
             for section in functionSections {
                 section.titleField.removeFromSuperview()
                 section.textView.removeFromSuperview()
+                section.cacheHitButton.removeFromSuperview()
                 section.collapseButton.removeFromSuperview()
                 section.copyButton.removeFromSuperview()
                 section.dividerView.removeFromSuperview()
@@ -529,6 +546,20 @@ final class ForceClickSelectionPopup {
                     self.handleHover(isHovering, for: collapseButton)
                 }
 
+                let cacheHitButton = ForceClickSelectionPopup.makeIconButton(
+                    symbolName: "internaldrive.fill",
+                    toolTip: UIStrings.Popup.cacheHit,
+                    target: self,
+                    action: #selector(handleSectionCacheHitIndicator(_:))
+                )
+                cacheHitButton.isHidden = true
+                cacheHitButton.onHover = { [weak self, weak cacheHitButton] isHovering in
+                    guard let self, let cacheHitButton else {
+                        return
+                    }
+                    self.handleHover(isHovering, for: cacheHitButton)
+                }
+
                 let copyButton = ForceClickSelectionPopup.makeIconButton(
                     symbolName: "doc.on.doc",
                     toolTip: UIStrings.Popup.copyResult,
@@ -549,6 +580,7 @@ final class ForceClickSelectionPopup {
                 documentView.addSubview(dividerView)
                 documentView.addSubview(titleField)
                 documentView.addSubview(textView)
+                documentView.addSubview(cacheHitButton)
                 documentView.addSubview(collapseButton)
                 documentView.addSubview(copyButton)
 
@@ -556,11 +588,13 @@ final class ForceClickSelectionPopup {
                     function: function,
                     titleField: titleField,
                     textView: textView,
+                    cacheHitButton: cacheHitButton,
                     collapseButton: collapseButton,
                     copyButton: copyButton,
                     dividerView: dividerView,
                     isLoading: true,
                     isCollapsed: isCollapsed,
+                    isCacheHit: false,
                     textRevision: takeNextTextRevision()
                 ))
             }
@@ -575,11 +609,13 @@ final class ForceClickSelectionPopup {
                     function: functions[index],
                     titleField: current.titleField,
                     textView: current.textView,
+                    cacheHitButton: current.cacheHitButton,
                     collapseButton: current.collapseButton,
                     copyButton: current.copyButton,
                     dividerView: current.dividerView,
                     isLoading: current.isLoading,
                     isCollapsed: isCollapsed,
+                    isCacheHit: current.isCacheHit,
                     textRevision: current.textRevision
                 )
             }
@@ -587,7 +623,12 @@ final class ForceClickSelectionPopup {
     }
 
     @discardableResult
-    private func updateFunctionSection(functionID: UUID, text: String, isFinal: Bool) -> Bool {
+    private func updateFunctionSection(
+        functionID: UUID,
+        text: String,
+        isFinal: Bool,
+        isCacheHit: Bool
+    ) -> Bool {
         guard let index = functionSections.firstIndex(where: { $0.function.id == functionID }) else {
             return false
         }
@@ -612,6 +653,13 @@ final class ForceClickSelectionPopup {
             section.isLoading = !hasContent
         }
         if section.isLoading != previousLoading {
+            didChange = true
+        }
+        let previousCacheHit = section.isCacheHit
+        if isCacheHit {
+            section.isCacheHit = true
+        }
+        if section.isCacheHit != previousCacheHit {
             didChange = true
         }
         functionSections[index] = section
@@ -761,6 +809,12 @@ final class ForceClickSelectionPopup {
         let sectionButtonSize: CGFloat = 16
         let sectionButtonSpacing: CGFloat = 4
         let paddingLeft = padding.width
+        let originalSectionButtonCount = 2
+
+        func sectionHeaderButtonsWidth(for section: FunctionSection) -> CGFloat {
+            let buttonCount = section.isCacheHit ? 3 : 2
+            return CGFloat(buttonCount) * sectionButtonSize + CGFloat(buttonCount) * sectionButtonSpacing
+        }
 
         let titleFont = originalTitleField.font ?? NSFont.systemFont(ofSize: 11, weight: .semibold)
         let titleAttributes: [NSAttributedString.Key: Any] = [.font: titleFont]
@@ -773,8 +827,9 @@ final class ForceClickSelectionPopup {
             modelLabelField.intrinsicContentSize.width,
             (modelText as NSString).size(withAttributes: modelAttributes).width
         ))
-        let headerButtonsWidth = CGFloat(actionButtons.count) * headerButtonSize
-            + CGFloat(max(0, actionButtons.count - 1)) * headerButtonSpacing
+        let headerVisibleButtons = actionButtons.filter { !$0.isHidden }
+        let headerButtonsWidth = CGFloat(headerVisibleButtons.count) * headerButtonSize
+            + CGFloat(max(0, headerVisibleButtons.count - 1)) * headerButtonSpacing
         let headerMinWidth = paddingLeft + modelWidth + headerLabelSpacing + headerButtonsWidth + padding.width + headerLabelExtra
         let maxWidthLimit = max(minWidth, min(max(preferredMaxWidth, headerMinWidth), visibleFrame.width - 24))
 
@@ -800,10 +855,12 @@ final class ForceClickSelectionPopup {
                 sectionTextSizes.append(textSizeValue)
             }
 
-            let originalTitleWidth = originalTitleSize.width + (sectionButtonSize * 2) + (sectionButtonSpacing * 2)
+            let originalTitleWidth = originalTitleSize.width
+                + CGFloat(originalSectionButtonCount) * sectionButtonSize
+                + CGFloat(originalSectionButtonCount) * sectionButtonSpacing
             var contentTextWidth = max(originalTitleWidth, originalTextSize.width)
             for index in sectionTitleSizes.indices {
-                let sectionTitleWidth = sectionTitleSizes[index].width + (sectionButtonSize * 2) + (sectionButtonSpacing * 2)
+                let sectionTitleWidth = sectionTitleSizes[index].width + sectionHeaderButtonsWidth(for: functionSections[index])
                 let sectionWidth = max(sectionTitleWidth, sectionTextSizes[index].width)
                 contentTextWidth = max(contentTextWidth, sectionWidth)
             }
@@ -916,7 +973,12 @@ final class ForceClickSelectionPopup {
         originalTitleField.frame = NSRect(
             x: titleX,
             y: y,
-            width: max(0, availableWidth - (sectionButtonSize * 2) - (sectionButtonSpacing * 2)),
+            width: max(
+                0,
+                availableWidth
+                    - CGFloat(originalSectionButtonCount) * sectionButtonSize
+                    - CGFloat(originalSectionButtonCount) * sectionButtonSpacing
+            ),
             height: ceil(originalTitleSize.height)
         )
         let originalCollapseButtonX = paddingLeft + availableWidth - sectionButtonSize
@@ -960,11 +1022,12 @@ final class ForceClickSelectionPopup {
             section.titleField.frame = NSRect(
                 x: titleX,
                 y: y,
-                width: max(0, availableWidth - (sectionButtonSize * 2) - (sectionButtonSpacing * 2)),
+                width: max(0, availableWidth - sectionHeaderButtonsWidth(for: section)),
                 height: ceil(titleSize.height)
             )
             let collapseButtonX = paddingLeft + availableWidth - sectionButtonSize
             let copyButtonX = collapseButtonX - sectionButtonSpacing - sectionButtonSize
+            let cacheButtonX = copyButtonX - sectionButtonSpacing - sectionButtonSize
             let buttonY = y + max(0, (ceil(titleSize.height) - sectionButtonSize) * 0.5)
             section.collapseButton.frame = NSRect(
                 x: collapseButtonX,
@@ -978,6 +1041,17 @@ final class ForceClickSelectionPopup {
                 width: sectionButtonSize,
                 height: sectionButtonSize
             )
+            if section.isCacheHit {
+                section.cacheHitButton.isHidden = false
+                section.cacheHitButton.frame = NSRect(
+                    x: cacheButtonX,
+                    y: buttonY,
+                    width: sectionButtonSize,
+                    height: sectionButtonSize
+                )
+            } else {
+                section.cacheHitButton.isHidden = true
+            }
             let isCollapsed = section.isCollapsed
             let textHeight = isCollapsed ? 0 : max(ceil(textSizeValue.height), 16)
             let spacing = isCollapsed ? 0 : titleTextSpacing
@@ -1004,10 +1078,11 @@ final class ForceClickSelectionPopup {
         scrollView.hasVerticalScroller = needsVerticalScroll
         let buttonSize: CGFloat = 18
         let buttonSpacing: CGFloat = 6
-        let buttonsWidth = CGFloat(actionButtons.count) * buttonSize + CGFloat(max(0, actionButtons.count - 1)) * buttonSpacing
+        let layoutVisibleButtons = actionButtons.filter { !$0.isHidden }
+        let buttonsWidth = CGFloat(layoutVisibleButtons.count) * buttonSize + CGFloat(max(0, layoutVisibleButtons.count - 1)) * buttonSpacing
         let buttonsX = max(paddingLeft, contentWidth - padding.width - buttonsWidth)
         let buttonsY = (headerHeight - buttonSize) * 0.5
-        for (index, button) in actionButtons.enumerated() {
+        for (index, button) in layoutVisibleButtons.enumerated() {
             let x = buttonsX + CGFloat(index) * (buttonSize + buttonSpacing)
             button.frame = NSRect(x: x, y: buttonsY, width: buttonSize, height: buttonSize)
         }
@@ -1115,6 +1190,7 @@ final class ForceClickSelectionPopup {
         for index in functionSections.indices {
             replaceResultText(in: functionSections[index].textView, with: "")
             functionSections[index].isLoading = false
+            functionSections[index].isCacheHit = false
             functionSections[index].textRevision = takeNextTextRevision()
         }
         updateActionButtons()
@@ -1153,6 +1229,9 @@ final class ForceClickSelectionPopup {
                 && !section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             section.copyButton.isEnabled = hasResult
             section.copyButton.alphaValue = hasResult ? enabledAlpha : disabledAlpha
+            section.cacheHitButton.isHidden = !section.isCacheHit
+            section.cacheHitButton.isEnabled = true
+            section.cacheHitButton.alphaValue = section.isCacheHit ? enabledAlpha : 0
         }
     }
 
@@ -1274,6 +1353,11 @@ final class ForceClickSelectionPopup {
     @objc private func handleOpenPreferences() {
         hideTooltip()
         onOpenPreferences?()
+    }
+
+    @objc private func handleSectionCacheHitIndicator(_ _: HoverableIconButton) {
+        hideTooltip()
+        return
     }
 
     private func copyToPasteboard(_ text: String) -> Bool {

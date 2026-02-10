@@ -33,12 +33,26 @@ final class PopupFunctionRunner: @unchecked Sendable {
 
     private func run(function: PopupFunction, text: String, context: PopupRequestContext) async {
         guard let translator = OpenAITranslator() else {
-            await publishResult(UIStrings.Translation.missingApiKey, for: function, context: context, isFinal: true, shouldLog: true)
+            await publishResult(
+                UIStrings.Translation.missingApiKey,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: true,
+                isCacheHit: false
+            )
             return
         }
         let trimmedPrompt = function.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
-            await publishResult(UIStrings.Popup.emptyPrompt, for: function, context: context, isFinal: true, shouldLog: false)
+            await publishResult(
+                UIStrings.Popup.emptyPrompt,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: false,
+                isCacheHit: false
+            )
             return
         }
 
@@ -57,7 +71,29 @@ final class PopupFunctionRunner: @unchecked Sendable {
         context: PopupRequestContext
     ) async {
         do {
-            let stream = try await translator.runPromptStream(prompt, text: text)
+            let streamResult = try await translator.runPromptStreamWithCacheInfo(prompt, text: text)
+            if streamResult.isCacheHit {
+                var cachedOutput = ""
+                for try await delta in streamResult.stream {
+                    guard !delta.isEmpty else {
+                        continue
+                    }
+                    cachedOutput += delta
+                }
+                let trimmed = cachedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resultText = trimmed.isEmpty ? UIStrings.Popup.emptyResult : trimmed
+                await publishResult(
+                    resultText,
+                    for: function,
+                    context: context,
+                    isFinal: true,
+                    shouldLog: true,
+                    isCacheHit: true
+                )
+                return
+            }
+
+            let stream = streamResult.stream
             var accumulated = ""
             var pending = ""
             let updateInterval: TimeInterval = 0.033
@@ -74,20 +110,34 @@ final class PopupFunctionRunner: @unchecked Sendable {
                     accumulated += pending
                     pending = ""
                     lastUpdate = now
-                    await publishProgress(accumulated, for: function, context: context)
+                    await publishProgress(accumulated, for: function, context: context, isCacheHit: false)
                 }
             }
             if !pending.isEmpty {
                 accumulated += pending
                 pending = ""
-                await publishProgress(accumulated, for: function, context: context)
+                await publishProgress(accumulated, for: function, context: context, isCacheHit: false)
             }
             let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
             let resultText = trimmed.isEmpty ? UIStrings.Popup.emptyResult : trimmed
-            await publishResult(resultText, for: function, context: context, isFinal: true, shouldLog: true)
+            await publishResult(
+                resultText,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: true,
+                isCacheHit: false
+            )
         } catch {
             let resultText = UIStrings.Translation.failed
-            await publishResult(resultText, for: function, context: context, isFinal: true, shouldLog: true)
+            await publishResult(
+                resultText,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: true,
+                isCacheHit: false
+            )
         }
     }
 
@@ -99,13 +149,23 @@ final class PopupFunctionRunner: @unchecked Sendable {
         context: PopupRequestContext
     ) async {
         let resultText: String
+        var isCacheHit = false
         do {
-            let result = try await translator.runPrompt(prompt, text: text)
-            resultText = result.isEmpty ? UIStrings.Popup.emptyResult : result
+            let result = try await translator.runPromptWithCacheInfo(prompt, text: text)
+            isCacheHit = result.isCacheHit
+            resultText = result.output.isEmpty ? UIStrings.Popup.emptyResult : result.output
         } catch {
             resultText = UIStrings.Translation.failed
+            isCacheHit = false
         }
-        await publishResult(resultText, for: function, context: context, isFinal: true, shouldLog: true)
+        await publishResult(
+            resultText,
+            for: function,
+            context: context,
+            isFinal: true,
+            shouldLog: true,
+            isCacheHit: isCacheHit
+        )
     }
 
     private func showLoading(original: String, context: PopupRequestContext) async {
@@ -131,12 +191,30 @@ final class PopupFunctionRunner: @unchecked Sendable {
 
     private func publishResultForAll(_ text: String, context: PopupRequestContext, shouldLog: Bool) async {
         for function in context.functions {
-            await publishResult(text, for: function, context: context, isFinal: true, shouldLog: shouldLog)
+            await publishResult(
+                text,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: shouldLog,
+                isCacheHit: false
+            )
         }
     }
 
-    private func publishProgress(_ text: String, for function: PopupFunction, context: PopupRequestContext) async {
-        await updatePopupResult(text, context: context, functionID: function.id, isFinal: false)
+    private func publishProgress(
+        _ text: String,
+        for function: PopupFunction,
+        context: PopupRequestContext,
+        isCacheHit: Bool
+    ) async {
+        await updatePopupResult(
+            text,
+            context: context,
+            functionID: function.id,
+            isFinal: false,
+            isCacheHit: isCacheHit
+        )
     }
 
     private func publishResult(
@@ -144,19 +222,27 @@ final class PopupFunctionRunner: @unchecked Sendable {
         for function: PopupFunction,
         context: PopupRequestContext,
         isFinal: Bool,
-        shouldLog: Bool
+        shouldLog: Bool,
+        isCacheHit: Bool
     ) async {
         if shouldLog {
             print("\(function.title): \(text)")
         }
-        await updatePopupResult(text, context: context, functionID: function.id, isFinal: isFinal)
+        await updatePopupResult(
+            text,
+            context: context,
+            functionID: function.id,
+            isFinal: isFinal,
+            isCacheHit: isCacheHit
+        )
     }
 
     private func updatePopupResult(
         _ text: String,
         context: PopupRequestContext,
         functionID: UUID,
-        isFinal: Bool
+        isFinal: Bool,
+        isCacheHit: Bool
     ) async {
         await MainActor.run {
             forceClickSelectionPopup.updateResult(
@@ -164,7 +250,8 @@ final class PopupFunctionRunner: @unchecked Sendable {
                 for: context.requestID,
                 functionID: functionID,
                 near: context.anchor.point,
-                isFinal: isFinal
+                isFinal: isFinal,
+                isCacheHit: isCacheHit
             )
         }
     }

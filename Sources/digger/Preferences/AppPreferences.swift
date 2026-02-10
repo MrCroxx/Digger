@@ -17,6 +17,8 @@ enum AppPreferences {
     static let popupShortcutKeyCodeKey = "PopupShortcutKeyCode"
     static let popupShortcutModifiersKey = "PopupShortcutModifiers"
     static let translationStreamingKey = "TranslationStreaming"
+    static let translationCacheMaxSizeGiBKey = "TranslationCacheMaxSizeGiB"
+    static let translationCacheTTLHoursKey = "TranslationCacheTTLHours"
     static let languageKey = "AppLanguage"
     static let customFunctionsKey = "CustomFunctions"
     static let customFunctionsClearedKey = "CustomFunctionsClearedOnceV2"
@@ -35,6 +37,8 @@ enum AppPreferences {
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
     static let defaultTranslationStreaming = true
+    static let defaultTranslationCacheMaxSizeGiB = 1.0
+    static let defaultTranslationCacheTTLHours = 168.0
     static let defaultLanguage: AppLanguage = .english
     static let defaultModel = "gpt-4.1-mini"
     static let defaultEndpoint = "https://api.openai.com/v1"
@@ -215,6 +219,42 @@ enum AppPreferences {
 
     static func setTranslationStreamingEnabled(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: translationStreamingKey)
+    }
+
+    static func translationCacheMaxSizeGiB() -> Double {
+        if UserDefaults.standard.object(forKey: translationCacheMaxSizeGiBKey) == nil {
+            return defaultTranslationCacheMaxSizeGiB
+        }
+        let stored = UserDefaults.standard.double(forKey: translationCacheMaxSizeGiBKey)
+        return max(stored, 0)
+    }
+
+    static func setTranslationCacheMaxSizeGiB(_ value: Double) {
+        UserDefaults.standard.set(max(value, 0), forKey: translationCacheMaxSizeGiBKey)
+    }
+
+    static func translationCacheMaxBytes() -> Int64 {
+        let bytes = translationCacheMaxSizeGiB() * 1_073_741_824
+        if bytes >= Double(Int64.max) {
+            return Int64.max
+        }
+        return Int64(bytes.rounded(.down))
+    }
+
+    static func translationCacheTTLHours() -> Double {
+        if UserDefaults.standard.object(forKey: translationCacheTTLHoursKey) == nil {
+            return defaultTranslationCacheTTLHours
+        }
+        let stored = UserDefaults.standard.double(forKey: translationCacheTTLHoursKey)
+        return max(stored, 0)
+    }
+
+    static func setTranslationCacheTTLHours(_ value: Double) {
+        UserDefaults.standard.set(max(value, 0), forKey: translationCacheTTLHoursKey)
+    }
+
+    static func translationCacheTTLSeconds() -> TimeInterval {
+        translationCacheTTLHours() * 3600
     }
 
     static func language() -> AppLanguage {

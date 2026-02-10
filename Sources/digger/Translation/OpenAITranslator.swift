@@ -2,6 +2,16 @@ import Foundation
 import OpenAI
 
 actor OpenAITranslator {
+    struct PromptResult: Sendable {
+        let output: String
+        let isCacheHit: Bool
+    }
+
+    struct PromptStreamResult: Sendable {
+        let stream: AsyncThrowingStream<String, Error>
+        let isCacheHit: Bool
+    }
+
     private let client: OpenAI
 
     init?() {
@@ -95,53 +105,94 @@ actor OpenAITranslator {
     }
 
     func runPrompt(_ prompt: String, text: String) async throws -> String {
-        let model = AppPreferences.model()
-        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
-        var messages: [ChatQuery.ChatCompletionMessageParam] = []
-        if !systemPrompt.isEmpty {
-            messages.append(.system(.init(content: .textContent(systemPrompt))))
+        let result = try await runPromptWithCacheInfo(prompt, text: text)
+        return result.output
+    }
+
+    func runPromptWithCacheInfo(_ prompt: String, text: String) async throws -> PromptResult {
+        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
+        if let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+            return PromptResult(output: cachedOutput, isCacheHit: true)
         }
-        messages.append(.system(.init(content: .textContent(prompt))))
-        messages.append(.user(.init(content: .string(text))))
-        let query = ChatQuery(
-            messages: messages,
-            model: model,
-            temperature: 0.2
-        )
         let result = try await client.chats(query: query)
-        return result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let output = result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        await TranslationDiskCache.shared.storeOutput(output, for: cacheKey)
+        return PromptResult(output: output, isCacheHit: false)
     }
 
     func runPromptStream(_ prompt: String, text: String) async throws -> AsyncThrowingStream<String, Error> {
-        let model = AppPreferences.model()
-        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
-        var messages: [ChatQuery.ChatCompletionMessageParam] = []
-        if !systemPrompt.isEmpty {
-            messages.append(.system(.init(content: .textContent(systemPrompt))))
+        let result = try await runPromptStreamWithCacheInfo(prompt, text: text)
+        return result.stream
+    }
+
+    func runPromptStreamWithCacheInfo(_ prompt: String, text: String) async throws -> PromptStreamResult {
+        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
+        if let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+            return PromptStreamResult(
+                stream: Self.singleValueStream(output: cachedOutput),
+                isCacheHit: true
+            )
         }
-        messages.append(.system(.init(content: .textContent(prompt))))
-        messages.append(.user(.init(content: .string(text))))
-        let query = ChatQuery(
-            messages: messages,
-            model: model,
-            temperature: 0.2
-        )
+
         let stream: AsyncThrowingStream<ChatStreamResult, Error> = client.chatsStream(query: query)
-        return AsyncThrowingStream { continuation in
+        let outputStream = AsyncThrowingStream<String, Error> { continuation in
             Task {
+                var accumulatedOutput = ""
                 do {
                     for try await result in stream {
                         for choice in result.choices {
                             if let delta = choice.delta.content, !delta.isEmpty {
+                                accumulatedOutput += delta
                                 continuation.yield(delta)
                             }
                         }
                     }
+                    let output = accumulatedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    await TranslationDiskCache.shared.storeOutput(output, for: cacheKey)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+        }
+        return PromptStreamResult(stream: outputStream, isCacheHit: false)
+    }
+
+    private func makeQueryAndCacheKey(
+        prompt: String,
+        text: String
+    ) -> (query: ChatQuery, cacheKey: TranslationDiskCache.RequestKey) {
+        let model = AppPreferences.model()
+        let endpoint = AppPreferences.endpointOrDefault()
+        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+        var messages: [ChatQuery.ChatCompletionMessageParam] = []
+        if !systemPrompt.isEmpty {
+            messages.append(.system(.init(content: .textContent(systemPrompt))))
+        }
+        messages.append(.system(.init(content: .textContent(prompt))))
+        messages.append(.user(.init(content: .string(text))))
+
+        let query = ChatQuery(
+            messages: messages,
+            model: model,
+            temperature: 0.2
+        )
+        let cacheKey = TranslationDiskCache.makeRequestKey(
+            input: text,
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            model: model,
+            endpoint: endpoint
+        )
+        return (query: query, cacheKey: cacheKey)
+    }
+
+    private static func singleValueStream(output: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            if !output.isEmpty {
+                continuation.yield(output)
+            }
+            continuation.finish()
         }
     }
 }

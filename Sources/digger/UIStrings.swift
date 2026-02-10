@@ -39,6 +39,7 @@ enum UIStrings {
         case popupUntitledFunction
         case popupCollapseResult
         case popupExpandResult
+        case popupCacheHit
         case preferencesTitle
         case preferencesDescription
         case preferencesTabGeneral
@@ -46,6 +47,7 @@ enum UIStrings {
         case preferencesTabFunctions
         case preferencesTabAdvanced
         case preferencesTabAPI
+        case preferencesTabCache
         case preferencesPopupFontSizeLabel
         case preferencesPopupTooltipDelayLabel
         case preferencesPopupShortcutLabel
@@ -73,6 +75,9 @@ enum UIStrings {
         case preferencesApiTestFailedPrefix
         case preferencesApiTestMissingKey
         case preferencesApiTestMissingModel
+        case preferencesCacheMaxSizeLabel
+        case preferencesCacheTTLHoursLabel
+        case preferencesOpenCacheDirectoryButton
         case menuPreferences
         case menuQuit
         case menuEdit
@@ -124,6 +129,7 @@ enum UIStrings {
         static var untitledFunction: String { value(.popupUntitledFunction) }
         static var collapseResult: String { value(.popupCollapseResult) }
         static var expandResult: String { value(.popupExpandResult) }
+        static var cacheHit: String { value(.popupCacheHit) }
     }
 
     enum Preferences {
@@ -134,6 +140,7 @@ enum UIStrings {
         static var tabFunctions: String { value(.preferencesTabFunctions) }
         static var tabAdvanced: String { value(.preferencesTabAdvanced) }
         static var tabAPI: String { value(.preferencesTabAPI) }
+        static var tabCache: String { value(.preferencesTabCache) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
         static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
         static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
@@ -161,6 +168,9 @@ enum UIStrings {
         static var apiTestFailedPrefix: String { value(.preferencesApiTestFailedPrefix) }
         static var apiTestMissingKey: String { value(.preferencesApiTestMissingKey) }
         static var apiTestMissingModel: String { value(.preferencesApiTestMissingModel) }
+        static var cacheMaxSizeLabel: String { value(.preferencesCacheMaxSizeLabel) }
+        static var cacheTTLHoursLabel: String { value(.preferencesCacheTTLHoursLabel) }
+        static var openCacheDirectoryButton: String { value(.preferencesOpenCacheDirectoryButton) }
     }
 
     enum Menu {
@@ -224,6 +234,7 @@ enum UIStrings {
             .popupUntitledFunction: "Untitled Prompt",
             .popupCollapseResult: "Collapse Result",
             .popupExpandResult: "Expand Result",
+            .popupCacheHit: "Cache hit",
             .preferencesTitle: "Preferences",
             .preferencesDescription: "Settings are saved automatically.",
             .preferencesTabGeneral: "General",
@@ -231,6 +242,7 @@ enum UIStrings {
             .preferencesTabFunctions: "Prompts",
             .preferencesTabAdvanced: "Advanced",
             .preferencesTabAPI: "API",
+            .preferencesTabCache: "Cache",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
             .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
             .preferencesPopupShortcutLabel: "Trigger Shortcut",
@@ -258,6 +270,9 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "Test failed:",
             .preferencesApiTestMissingKey: "Please enter an API key first",
             .preferencesApiTestMissingModel: "Please enter a model first",
+            .preferencesCacheMaxSizeLabel: "Cache Max Size (GiB)",
+            .preferencesCacheTTLHoursLabel: "Cache TTL (Hours)",
+            .preferencesOpenCacheDirectoryButton: "Open Cache Directory",
             .menuPreferences: "Preferences",
             .menuQuit: "Quit Digger",
             .menuEdit: "Edit",
@@ -305,6 +320,7 @@ enum UIStrings {
             .popupUntitledFunction: "未命名提示语",
             .popupCollapseResult: "收起结果",
             .popupExpandResult: "展开结果",
+            .popupCacheHit: "缓存命中",
             .preferencesTitle: "偏好设置",
             .preferencesDescription: "设置会自动保存。",
             .preferencesTabGeneral: "通用",
@@ -312,6 +328,7 @@ enum UIStrings {
             .preferencesTabFunctions: "提示语",
             .preferencesTabAdvanced: "高级",
             .preferencesTabAPI: "API",
+            .preferencesTabCache: "缓存",
             .preferencesPopupFontSizeLabel: "弹窗字号",
             .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
             .preferencesPopupShortcutLabel: "触发快捷键",
@@ -339,6 +356,9 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "测试失败:",
             .preferencesApiTestMissingKey: "请先输入 API Key",
             .preferencesApiTestMissingModel: "请先输入模型",
+            .preferencesCacheMaxSizeLabel: "缓存上限 (GiB)",
+            .preferencesCacheTTLHoursLabel: "缓存过期时间 (小时)",
+            .preferencesOpenCacheDirectoryButton: "打开缓存目录",
             .menuPreferences: "偏好设置",
             .menuQuit: "退出 Digger",
             .menuEdit: "编辑",
@@ -386,6 +406,7 @@ enum UIStrings {
             .popupUntitledFunction: "無題のプロンプト",
             .popupCollapseResult: "結果を折りたたむ",
             .popupExpandResult: "結果を展開",
+            .popupCacheHit: "キャッシュヒット",
             .preferencesTitle: "環境設定",
             .preferencesDescription: "設定は自動的に保存されます。",
             .preferencesTabGeneral: "一般",
@@ -393,6 +414,7 @@ enum UIStrings {
             .preferencesTabFunctions: "プロンプト",
             .preferencesTabAdvanced: "詳細",
             .preferencesTabAPI: "API",
+            .preferencesTabCache: "キャッシュ",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
             .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
             .preferencesPopupShortcutLabel: "トリガーショートカット",
@@ -420,6 +442,9 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "テストに失敗しました:",
             .preferencesApiTestMissingKey: "API Key を入力してください",
             .preferencesApiTestMissingModel: "モデルを入力してください",
+            .preferencesCacheMaxSizeLabel: "キャッシュ上限 (GiB)",
+            .preferencesCacheTTLHoursLabel: "キャッシュ有効期限 (時間)",
+            .preferencesOpenCacheDirectoryButton: "キャッシュフォルダを開く",
             .menuPreferences: "環境設定",
             .menuQuit: "Digger を終了",
             .menuEdit: "編集",
