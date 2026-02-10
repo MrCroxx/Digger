@@ -109,9 +109,13 @@ actor OpenAITranslator {
         return result.output
     }
 
-    func runPromptWithCacheInfo(_ prompt: String, text: String) async throws -> PromptResult {
+    func runPromptWithCacheInfo(
+        _ prompt: String,
+        text: String,
+        useCache: Bool = true
+    ) async throws -> PromptResult {
         let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
-        if let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+        if useCache, let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
             return PromptResult(output: cachedOutput, isCacheHit: true)
         }
         let result = try await client.chats(query: query)
@@ -125,9 +129,13 @@ actor OpenAITranslator {
         return result.stream
     }
 
-    func runPromptStreamWithCacheInfo(_ prompt: String, text: String) async throws -> PromptStreamResult {
+    func runPromptStreamWithCacheInfo(
+        _ prompt: String,
+        text: String,
+        useCache: Bool = true
+    ) async throws -> PromptStreamResult {
         let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
-        if let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+        if useCache, let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
             return PromptStreamResult(
                 stream: Self.singleValueStream(output: cachedOutput),
                 isCacheHit: true

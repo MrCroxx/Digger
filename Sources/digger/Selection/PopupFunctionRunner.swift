@@ -2,12 +2,13 @@ import AppKit
 import Foundation
 
 final class PopupFunctionRunner: @unchecked Sendable {
-    func run(text: String) async {
+    func run(text: String, forceAPI: Bool = false, anchorLocation: CGPoint? = nil) async {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
             return
         }
-        guard let location = currentMouseLocation() else {
+        let resolvedLocation = anchorLocation ?? currentMouseLocation()
+        guard let location = resolvedLocation else {
             return
         }
         let requestID = UUID()
@@ -25,13 +26,18 @@ final class PopupFunctionRunner: @unchecked Sendable {
         await withTaskGroup(of: Void.self) { group in
             for function in functions {
                 group.addTask { [self] in
-                    await run(function: function, text: trimmedText, context: context)
+                    await run(function: function, text: trimmedText, context: context, forceAPI: forceAPI)
                 }
             }
         }
     }
 
-    private func run(function: PopupFunction, text: String, context: PopupRequestContext) async {
+    private func run(
+        function: PopupFunction,
+        text: String,
+        context: PopupRequestContext,
+        forceAPI: Bool
+    ) async {
         guard let translator = OpenAITranslator() else {
             await publishResult(
                 UIStrings.Translation.missingApiKey,
@@ -57,9 +63,23 @@ final class PopupFunctionRunner: @unchecked Sendable {
         }
 
         if AppPreferences.translationStreamingEnabled() {
-            await runStreaming(translator: translator, prompt: trimmedPrompt, text: text, function: function, context: context)
+            await runStreaming(
+                translator: translator,
+                prompt: trimmedPrompt,
+                text: text,
+                function: function,
+                context: context,
+                forceAPI: forceAPI
+            )
         } else {
-            await runNonStreaming(translator: translator, prompt: trimmedPrompt, text: text, function: function, context: context)
+            await runNonStreaming(
+                translator: translator,
+                prompt: trimmedPrompt,
+                text: text,
+                function: function,
+                context: context,
+                forceAPI: forceAPI
+            )
         }
     }
 
@@ -68,10 +88,15 @@ final class PopupFunctionRunner: @unchecked Sendable {
         prompt: String,
         text: String,
         function: PopupFunction,
-        context: PopupRequestContext
+        context: PopupRequestContext,
+        forceAPI: Bool
     ) async {
         do {
-            let streamResult = try await translator.runPromptStreamWithCacheInfo(prompt, text: text)
+            let streamResult = try await translator.runPromptStreamWithCacheInfo(
+                prompt,
+                text: text,
+                useCache: !forceAPI
+            )
             if streamResult.isCacheHit {
                 var cachedOutput = ""
                 for try await delta in streamResult.stream {
@@ -146,12 +171,17 @@ final class PopupFunctionRunner: @unchecked Sendable {
         prompt: String,
         text: String,
         function: PopupFunction,
-        context: PopupRequestContext
+        context: PopupRequestContext,
+        forceAPI: Bool
     ) async {
         let resultText: String
         var isCacheHit = false
         do {
-            let result = try await translator.runPromptWithCacheInfo(prompt, text: text)
+            let result = try await translator.runPromptWithCacheInfo(
+                prompt,
+                text: text,
+                useCache: !forceAPI
+            )
             isCacheHit = result.isCacheHit
             resultText = result.output.isEmpty ? UIStrings.Popup.emptyResult : result.output
         } catch {

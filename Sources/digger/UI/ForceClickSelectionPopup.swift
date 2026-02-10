@@ -179,6 +179,7 @@ final class ForceClickSelectionPopup {
     private let scrollView: DraggableScrollView
     private let documentView: NSView
     private let originalCopyButton: HoverableIconButton
+    private let retryButton: HoverableIconButton
     private let copyAllButton: HoverableIconButton
     private let preferencesButton: HoverableIconButton
     private let actionButtons: [HoverableIconButton]
@@ -187,6 +188,7 @@ final class ForceClickSelectionPopup {
     private var copyFeedbackTimer: Timer?
     private weak var hoveredButton: HoverableIconButton?
     var onOpenPreferences: (() -> Void)?
+    var onRetry: ((String, CGPoint) -> Void)?
     private var loadingTimer: Timer?
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
@@ -265,13 +267,19 @@ final class ForceClickSelectionPopup {
             target: nil,
             action: #selector(handleCopyAll)
         )
+        retryButton = ForceClickSelectionPopup.makeIconButton(
+            symbolName: "arrow.clockwise",
+            toolTip: UIStrings.Popup.retry,
+            target: nil,
+            action: #selector(handleRetry)
+        )
         preferencesButton = ForceClickSelectionPopup.makeIconButton(
             symbolName: "gearshape",
             toolTip: UIStrings.Popup.openPreferences,
             target: nil,
             action: #selector(handleOpenPreferences)
         )
-        actionButtons = [copyAllButton, preferencesButton]
+        actionButtons = [retryButton, copyAllButton, preferencesButton]
         tooltipWindow = HoverTooltipWindow()
 
         contentView = DraggableContentView()
@@ -304,6 +312,7 @@ final class ForceClickSelectionPopup {
         scrollView.borderType = .noBorder
         scrollView.documentView = documentView
         headerView.addSubview(modelLabelField)
+        headerView.addSubview(retryButton)
         headerView.addSubview(copyAllButton)
         headerView.addSubview(preferencesButton)
         contentView.addSubview(scrollView)
@@ -463,6 +472,7 @@ final class ForceClickSelectionPopup {
             functionSections[index].cacheHitButton.tooltipText = UIStrings.Popup.cacheHit
             updateCollapseButton(for: index)
         }
+        retryButton.tooltipText = UIStrings.Popup.retry
         copyAllButton.tooltipText = UIStrings.Popup.copyAll
         preferencesButton.tooltipText = UIStrings.Popup.openPreferences
         updateLoadingText()
@@ -1220,8 +1230,10 @@ final class ForceClickSelectionPopup {
         copyAllButton.isEnabled = hasAnyResult
         let enabledAlpha: CGFloat = 1
         let disabledAlpha: CGFloat = 0.4
-        copyAllButton.alphaValue = hasAnyResult ? enabledAlpha : disabledAlpha
         let originalHasText = !originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        retryButton.isEnabled = originalHasText
+        retryButton.alphaValue = originalHasText ? enabledAlpha : disabledAlpha
+        copyAllButton.alphaValue = hasAnyResult ? enabledAlpha : disabledAlpha
         originalCopyButton.isEnabled = originalHasText
         originalCopyButton.alphaValue = originalHasText ? enabledAlpha : disabledAlpha
         for section in functionSections {
@@ -1353,6 +1365,19 @@ final class ForceClickSelectionPopup {
     @objc private func handleOpenPreferences() {
         hideTooltip()
         onOpenPreferences?()
+    }
+
+    @objc private func handleRetry() {
+        hideTooltip()
+        let text = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return
+        }
+        let retryAnchor = CGPoint(
+            x: window.frame.minX - 12,
+            y: window.frame.maxY + 12
+        )
+        onRetry?(text, retryAnchor)
     }
 
     @objc private func handleSectionCacheHitIndicator(_ _: HoverableIconButton) {

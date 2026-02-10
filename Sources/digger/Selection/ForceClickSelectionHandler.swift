@@ -12,6 +12,19 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
     private let selectionCacheTTL: TimeInterval = 0.8
     private let popupRunner = PopupFunctionRunner()
 
+    init() {
+        Task { @MainActor [weak self] in
+            forceClickSelectionPopup.onRetry = { [weak self] text, anchorLocation in
+                guard let self else {
+                    return
+                }
+                Task {
+                    await self.popupRunner.run(text: text, forceAPI: true, anchorLocation: anchorLocation)
+                }
+            }
+        }
+    }
+
     func handleForceClick() async {
         guard shouldHandleTrigger() else {
             return

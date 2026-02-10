@@ -30,6 +30,7 @@ enum UIStrings {
         case popupCopyResult
         case popupCopyAll
         case popupOpenPreferences
+        case popupRetry
         case popupCopyTranslationSuccess
         case popupCopyResultSuccess
         case popupCopyAllSuccess
@@ -120,6 +121,7 @@ enum UIStrings {
         static var copyResult: String { value(.popupCopyResult) }
         static var copyAll: String { value(.popupCopyAll) }
         static var openPreferences: String { value(.popupOpenPreferences) }
+        static var retry: String { value(.popupRetry) }
         static var copyTranslationSuccess: String { value(.popupCopyTranslationSuccess) }
         static var copyResultSuccess: String { value(.popupCopyResultSuccess) }
         static var copyAllSuccess: String { value(.popupCopyAllSuccess) }
@@ -225,6 +227,7 @@ enum UIStrings {
             .popupCopyResult: "Copy Result",
             .popupCopyAll: "Copy All Results",
             .popupOpenPreferences: "Open Preferences",
+            .popupRetry: "Retry Query",
             .popupCopyTranslationSuccess: "Translation copied",
             .popupCopyResultSuccess: "Result copied",
             .popupCopyAllSuccess: "All results copied",
@@ -311,6 +314,7 @@ enum UIStrings {
             .popupCopyResult: "复制结果",
             .popupCopyAll: "复制所有结果",
             .popupOpenPreferences: "打开偏好设置",
+            .popupRetry: "重试查询",
             .popupCopyTranslationSuccess: "译文已复制",
             .popupCopyResultSuccess: "结果已复制",
             .popupCopyAllSuccess: "结果已复制",
@@ -397,6 +401,7 @@ enum UIStrings {
             .popupCopyResult: "結果をコピー",
             .popupCopyAll: "すべての結果をコピー",
             .popupOpenPreferences: "環境設定を開く",
+            .popupRetry: "再試行",
             .popupCopyTranslationSuccess: "翻訳をコピーしました",
             .popupCopyResultSuccess: "結果をコピーしました",
             .popupCopyAllSuccess: "結果をコピーしました",
