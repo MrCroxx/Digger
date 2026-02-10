@@ -8,6 +8,7 @@ struct PreferencesView: View {
         case functions
         case advanced
         case api
+        case cache
 
         var id: String { rawValue }
 
@@ -23,6 +24,8 @@ struct PreferencesView: View {
                 return UIStrings.Preferences.tabAdvanced
             case .api:
                 return UIStrings.Preferences.tabAPI
+            case .cache:
+                return UIStrings.Preferences.tabCache
             }
         }
 
@@ -38,6 +41,8 @@ struct PreferencesView: View {
                 return "slider.horizontal.3"
             case .api:
                 return "key"
+            case .cache:
+                return "internaldrive"
             }
         }
     }
@@ -46,6 +51,8 @@ struct PreferencesView: View {
         case popupTooltipDelay
         case popupMaxWidth
         case popupMaxHeight
+        case translationCacheMaxSizeGiB
+        case translationCacheTTLHours
         case pressureThreshold
         case pressureDelta
         case baselineWindow
@@ -185,6 +192,8 @@ struct PreferencesView: View {
                     advancedPane
                 case .api:
                     apiPane
+                case .cache:
+                    cachePane
                 }
             }
             .padding(.top, 16)
@@ -445,6 +454,35 @@ struct PreferencesView: View {
         }
     }
 
+    private var cachePane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent {
+                TextField("", text: $viewModel.translationCacheMaxSizeGiBText)
+                    .preferenceInputStyle()
+                    .frame(width: 160)
+                    .focused($focusedField, equals: .translationCacheMaxSizeGiB)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.cacheMaxSizeLabel)
+            }
+            LabeledContent {
+                TextField("", text: $viewModel.translationCacheTTLHoursText)
+                    .preferenceInputStyle()
+                    .frame(width: 160)
+                    .focused($focusedField, equals: .translationCacheTTLHours)
+            } label: {
+                preferenceLabel(UIStrings.Preferences.cacheTTLHoursLabel)
+            }
+            HStack {
+                Button(UIStrings.Preferences.openCacheDirectoryButton) {
+                    openCacheDirectoryInFinder()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer()
+            }
+        }
+    }
+
     private var isApiTestRunning: Bool {
         if case .testing = viewModel.apiTestState {
             return true
@@ -522,6 +560,10 @@ struct PreferencesView: View {
             applyPopupMaxWidth()
         case .popupMaxHeight:
             applyPopupMaxHeight()
+        case .translationCacheMaxSizeGiB:
+            applyTranslationCacheMaxSizeGiB()
+        case .translationCacheTTLHours:
+            applyTranslationCacheTTLHours()
         case .pressureThreshold:
             applyPressureThreshold()
         case .pressureDelta:
@@ -558,6 +600,39 @@ struct PreferencesView: View {
         AppPreferences.setPopupMaxHeight(CGFloat(value))
         viewModel.popupMaxHeightText = String(format: "%.0f", AppPreferences.popupMaxHeight())
         onPopupLayoutChange()
+    }
+
+    private func applyTranslationCacheMaxSizeGiB() {
+        guard let value = Double(viewModel.translationCacheMaxSizeGiBText) else {
+            viewModel.translationCacheMaxSizeGiBText = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
+            return
+        }
+        AppPreferences.setTranslationCacheMaxSizeGiB(value)
+        viewModel.translationCacheMaxSizeGiBText = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
+        Task {
+            await TranslationDiskCache.shared.pruneIfNeeded()
+        }
+    }
+
+    private func applyTranslationCacheTTLHours() {
+        guard let value = Double(viewModel.translationCacheTTLHoursText) else {
+            viewModel.translationCacheTTLHoursText = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
+            return
+        }
+        AppPreferences.setTranslationCacheTTLHours(value)
+        viewModel.translationCacheTTLHoursText = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
+        Task {
+            await TranslationDiskCache.shared.pruneIfNeeded()
+        }
+    }
+
+    private func openCacheDirectoryInFinder() {
+        Task {
+            let directoryURL = await TranslationDiskCache.shared.cacheDirectoryLocation()
+            _ = await MainActor.run {
+                NSWorkspace.shared.open(directoryURL)
+            }
+        }
     }
 
     private func applyPressureThreshold() {
