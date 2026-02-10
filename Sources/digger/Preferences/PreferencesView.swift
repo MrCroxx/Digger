@@ -51,6 +51,20 @@ struct PreferencesView: View {
         case baselineWindow
     }
 
+    private enum PromptEditorTarget: Identifiable, Equatable {
+        case systemPrompt
+        case customPrompt(UUID)
+
+        var id: String {
+            switch self {
+            case .systemPrompt:
+                return "system"
+            case .customPrompt(let id):
+                return id.uuidString
+            }
+        }
+    }
+
     @ObservedObject var viewModel: PreferencesViewModel
     let onPopupFontSizeChange: (CGFloat) -> Void
     let onPopupLayoutChange: () -> Void
@@ -61,6 +75,7 @@ struct PreferencesView: View {
     @State private var selection: PreferencesTab? = .general
     @FocusState private var focusedField: Field?
     @State private var lastFocusedField: Field?
+    @State private var promptEditorTarget: PromptEditorTarget?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -139,6 +154,16 @@ struct PreferencesView: View {
                !newValue.contains(where: { $0.id == selectedFunctionID }) {
                 viewModel.selectedFunctionID = newValue.first?.id
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            promptEditorTarget = nil
+        }
+        .sheet(item: $promptEditorTarget) { target in
+            PromptEditorSheet(
+                title: promptEditorTitle(for: target),
+                placeholder: promptEditorPlaceholder(for: target),
+                text: promptEditorBinding(for: target)
+            )
         }
     }
 
@@ -252,15 +277,23 @@ struct PreferencesView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(UIStrings.Preferences.systemPromptTitle)
                     .font(.system(size: 13, weight: .semibold))
-            Text(UIStrings.Preferences.systemPromptDescription)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            TextField(
-                UIStrings.Preferences.systemPromptPlaceholder,
-                text: $viewModel.systemPrompt
-            )
-            .preferenceInputStyle()
-        }
+                Text(UIStrings.Preferences.systemPromptDescription)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                Button {
+                    openPromptEditor(.systemPrompt)
+                } label: {
+                    Text(previewTextOrPlaceholder(for: viewModel.systemPrompt, placeholder: UIStrings.Preferences.systemPromptPlaceholder))
+                        .foregroundColor(viewModel.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .preferenceInputContainerStyle()
+            }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(UIStrings.Preferences.customFunctionsTitle)
@@ -295,11 +328,21 @@ struct PreferencesView: View {
                                 )
                                 .preferenceInputStyle()
                                 .frame(width: 160)
-                                TextField(
-                                    UIStrings.Preferences.functionPromptPlaceholder,
-                                    text: binding(for: function.id, keyPath: \.prompt)
-                                )
-                                .preferenceInputStyle()
+
+                                Button {
+                                    openPromptEditor(.customPrompt(function.id))
+                                } label: {
+                                    Text(previewTextOrPlaceholder(for: function.prompt, placeholder: UIStrings.Preferences.functionPromptPlaceholder))
+                                        .foregroundColor(function.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .buttonStyle(.plain)
+                                .preferenceInputContainerStyle()
+
                                 Button("-") {
                                     removeFunction(function.id)
                                 }
@@ -440,6 +483,7 @@ struct PreferencesView: View {
     private func restorePrompts() {
         viewModel.customFunctions = AppPreferences.defaultCustomFunctions
         viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
+        promptEditorTarget = nil
     }
 
     private func removeFunction(_ id: UUID) {
@@ -450,6 +494,9 @@ struct PreferencesView: View {
         viewModel.customFunctions.remove(at: index)
         if wasSelected {
             viewModel.selectedFunctionID = viewModel.customFunctions.first?.id
+        }
+        if promptEditorTarget == .customPrompt(id) {
+            promptEditorTarget = nil
         }
     }
 
@@ -550,6 +597,115 @@ struct PreferencesView: View {
             TimeInterval(AppPreferences.baselineWindowMs() / 1000)
         )
     }
+
+    private func openPromptEditor(_ target: PromptEditorTarget) {
+        promptEditorTarget = target
+    }
+
+    private func previewTextOrPlaceholder(for text: String, placeholder: String) -> String {
+        let preview = promptPreviewText(text)
+        return preview.isEmpty ? placeholder : preview
+    }
+
+    private func promptPreviewText(_ prompt: String) -> String {
+        for line in prompt.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return ""
+    }
+
+    private func promptEditorTitle(for target: PromptEditorTarget) -> String {
+        switch target {
+        case .systemPrompt:
+            return UIStrings.Preferences.systemPromptTitle
+        case .customPrompt(let id):
+            let title = viewModel.customFunctions.first(where: { $0.id == id })?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if title.isEmpty {
+                return UIStrings.Preferences.functionDefaultTitle
+            }
+            return title
+        }
+    }
+
+    private func promptEditorPlaceholder(for target: PromptEditorTarget) -> String {
+        switch target {
+        case .systemPrompt:
+            return UIStrings.Preferences.systemPromptPlaceholder
+        case .customPrompt:
+            return UIStrings.Preferences.functionPromptPlaceholder
+        }
+    }
+
+    private func promptEditorBinding(for target: PromptEditorTarget) -> Binding<String> {
+        switch target {
+        case .systemPrompt:
+            return $viewModel.systemPrompt
+        case .customPrompt(let id):
+            return binding(for: id, keyPath: \.prompt)
+        }
+    }
+}
+
+private struct MultilinePromptEditor: View {
+    let placeholder: String
+    @Binding var text: String
+    @FocusState private var isEditorFocused: Bool
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 5)
+                    .padding(.top, 2)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $text)
+                .font(.system(size: 13))
+                .focused($isEditorFocused)
+                .scrollContentBackgroundIfAvailable()
+        }
+        .preferenceInputContainerStyle()
+        .onAppear {
+            DispatchQueue.main.async {
+                isEditorFocused = true
+            }
+        }
+        .onTapGesture {
+            isEditorFocused = true
+        }
+    }
+}
+
+private struct PromptEditorSheet: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+            MultilinePromptEditor(placeholder: placeholder, text: $text)
+                .frame(minHeight: 220, maxHeight: 360)
+            HStack {
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 560)
+    }
 }
 
 struct ShortcutRecorderView: NSViewRepresentable {
@@ -588,6 +744,11 @@ private extension View {
     func preferenceInputStyle() -> some View {
         self
             .textFieldStyle(.plain)
+            .preferenceInputContainerStyle()
+    }
+
+    func preferenceInputContainerStyle() -> some View {
+        self
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
             .background(Color(nsColor: .textBackgroundColor))
@@ -596,6 +757,15 @@ private extension View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(Color(nsColor: .separatorColor))
             )
+    }
+
+    @ViewBuilder
+    func scrollContentBackgroundIfAvailable() -> some View {
+        if #available(macOS 13.0, *) {
+            self.scrollContentBackground(.hidden)
+        } else {
+            self
+        }
     }
 
     @ViewBuilder

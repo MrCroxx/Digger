@@ -17,8 +17,8 @@ This document summarizes the Preferences-related UI changes in this session and 
 
 ### Add button
 
-- The header shows a single `+` button for adding a new custom function.
-- The new function is appended and immediately selected.
+- The header shows a single `+` button for adding a new custom prompt.
+- The new prompt is appended and immediately selected.
 
 ### Button presentation
 
