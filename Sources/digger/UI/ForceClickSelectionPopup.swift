@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon
 import Foundation
 import QuartzCore
@@ -161,6 +162,12 @@ final class HoverTooltipWindow: NSWindow {
 
 @MainActor
 final class ForceClickSelectionPopup {
+    private struct FocusRestoreContext {
+        let appPID: pid_t
+        let focusedWindow: AXUIElement?
+        let focusedElement: AXUIElement?
+    }
+
     private struct TextMeasurementCacheEntry {
         let revision: UInt64
         let maxWidth: CGFloat
@@ -211,6 +218,8 @@ final class ForceClickSelectionPopup {
     private var textMeasurementCache: [ObjectIdentifier: TextMeasurementCacheEntry] = [:]
     private var nextTextRevision: UInt64 = 1
     private var originalTextRevision: UInt64 = 0
+    private var focusRestoreContext: FocusRestoreContext?
+    private let systemElement = AXUIElementCreateSystemWide()
 
     private struct FunctionSection {
         let function: PopupFunction
@@ -370,6 +379,10 @@ final class ForceClickSelectionPopup {
         let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedOriginal.isEmpty else {
             return
+        }
+
+        if !window.isVisible {
+            focusRestoreContext = captureFocusRestoreContext()
         }
 
         currentRequestID = requestID
@@ -1494,7 +1507,7 @@ final class ForceClickSelectionPopup {
         guard window.isVisible else {
             return
         }
-        dismissPopup()
+        dismissPopup(restoreFocus: true)
     }
 
     func dismissIfClickOutside(_ location: CGPoint) {
@@ -1502,16 +1515,107 @@ final class ForceClickSelectionPopup {
             return
         }
         if !isLocationInsideWindow(location) {
-            dismissPopup()
+            dismissPopup(restoreFocus: false)
         }
     }
 
-    private func dismissPopup() {
+    private func dismissPopup(restoreFocus: Bool = true) {
         cancelPendingLayoutUpdate()
         stopLoadingAnimation()
         hideTooltip()
         window.orderOut(nil)
         resetContentForNextShow()
+        if restoreFocus {
+            restoreFocusIfNeeded()
+        } else {
+            focusRestoreContext = nil
+        }
+    }
+
+    private func captureFocusRestoreContext() -> FocusRestoreContext? {
+        var focusedAppValue: CFTypeRef?
+        let focusedAppResult = AXUIElementCopyAttributeValue(
+            systemElement,
+            kAXFocusedApplicationAttribute as CFString,
+            &focusedAppValue
+        )
+        let focusedAppElement = focusedAppResult == .success ? (focusedAppValue as! AXUIElement?) : nil
+        var appPID: pid_t = 0
+        if let focusedAppElement {
+            AXUIElementGetPid(focusedAppElement, &appPID)
+        }
+        if appPID == 0 {
+            guard let app = NSWorkspace.shared.frontmostApplication else {
+                return nil
+            }
+            appPID = app.processIdentifier
+        }
+
+        var focusedWindowValue: CFTypeRef?
+        let focusedWindowResult = AXUIElementCopyAttributeValue(
+            systemElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindowValue
+        )
+        let focusedWindow = focusedWindowResult == .success ? (focusedWindowValue as! AXUIElement?) : nil
+
+        var focusedValue: CFTypeRef?
+        let focusedResult = AXUIElementCopyAttributeValue(
+            systemElement,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedValue
+        )
+        let focusedElement = focusedResult == .success ? (focusedValue as! AXUIElement?) : nil
+        return FocusRestoreContext(
+            appPID: appPID,
+            focusedWindow: focusedWindow,
+            focusedElement: focusedElement
+        )
+    }
+
+    private func restoreFocusIfNeeded() {
+        guard let context = focusRestoreContext else {
+            return
+        }
+        focusRestoreContext = nil
+
+        if let app = NSRunningApplication(processIdentifier: context.appPID), !app.isTerminated {
+            _ = app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        }
+
+        applyFocusRestoreContext(context)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            self.applyFocusRestoreContext(context)
+        }
+    }
+
+    private func applyFocusRestoreContext(_ context: FocusRestoreContext) {
+        let appElement = AXUIElementCreateApplication(context.appPID)
+        if let focusedWindow = context.focusedWindow {
+            _ = AXUIElementSetAttributeValue(
+                focusedWindow,
+                kAXMainAttribute as CFString,
+                kCFBooleanTrue
+            )
+            _ = AXUIElementSetAttributeValue(
+                appElement,
+                kAXFocusedWindowAttribute as CFString,
+                focusedWindow
+            )
+        }
+        if let focusedElement = context.focusedElement {
+            _ = AXUIElementSetAttributeValue(
+                focusedElement,
+                kAXFocusedAttribute as CFString,
+                kCFBooleanTrue
+            )
+            _ = AXUIElementSetAttributeValue(
+                appElement,
+                kAXFocusedUIElementAttribute as CFString,
+                focusedElement
+            )
+        }
     }
 
     private func isLocationInsideWindow(_ location: CGPoint) -> Bool {
