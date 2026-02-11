@@ -31,19 +31,20 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
         }
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             print(selectedText)
-            await popupRunner.run(text: selectedText)
+            await popupRunner.run(text: selectedText, anchorLocation: resolvedAnchorLocation())
             return
         }
 
         if let cachedSelection = consumeSelectionSnapshotIfValid() {
             _ = restoreSelection(cachedSelection)
             var cachedText = cachedSelection.text
+            let cachedAnchorLocation = resolvedAnchorLocation(preferred: cachedSelection.anchorLocation)
             if cachedText.isEmpty {
                 cachedText = copySelectionText(selectWordIfNeeded: false) ?? ""
             }
             if !cachedText.isEmpty {
                 print(cachedText)
-                await popupRunner.run(text: cachedText)
+                await popupRunner.run(text: cachedText, anchorLocation: cachedAnchorLocation)
                 return
             }
         }
@@ -52,12 +53,12 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
                 print(fallbackText)
-                await popupRunner.run(text: fallbackText)
+                await popupRunner.run(text: fallbackText, anchorLocation: resolvedAnchorLocation())
             }
             return
         }
         print(text)
-        await popupRunner.run(text: text)
+        await popupRunner.run(text: text, anchorLocation: resolvedAnchorLocation())
     }
 
     func cacheSelectionBeforeMouseDown() {
@@ -144,6 +145,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
                 element: focusedElement,
                 range: nil,
                 text: cachedText,
+                anchorLocation: nil,
                 timestamp: ProcessInfo.processInfo.systemUptime
             )
         }
@@ -155,6 +157,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
                 element: focusedElement,
                 range: nil,
                 text: cachedText,
+                anchorLocation: nil,
                 timestamp: ProcessInfo.processInfo.systemUptime
             )
         }
@@ -175,6 +178,7 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             element: focusedElement,
             range: selectionRange,
             text: cachedText,
+            anchorLocation: selectionAnchorLocation(for: focusedElement, selectionRange: selectionRange),
             timestamp: ProcessInfo.processInfo.systemUptime
         )
     }
@@ -422,5 +426,56 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             mouseDown?.post(tap: .cgSessionEventTap)
             mouseUp?.post(tap: .cgSessionEventTap)
         }
+    }
+
+    private func resolvedAnchorLocation(preferred: CGPoint? = nil) -> CGPoint? {
+        preferred
+            ?? currentSelectionAnchorLocation()
+            ?? currentEventTapMouseLocation()
+            ?? currentMouseLocation()
+    }
+
+    private func currentSelectionAnchorLocation() -> CGPoint? {
+        guard let focusedElementValue = copyAttribute(
+            element: systemElement,
+            attribute: kAXFocusedUIElementAttribute as CFString
+        ) else {
+            return nil
+        }
+        let focusedElement = focusedElementValue as! AXUIElement
+        guard let rangeValueAny = copyAttribute(
+            element: focusedElement,
+            attribute: kAXSelectedTextRangeAttribute as CFString
+        ) else {
+            return nil
+        }
+        let rangeValue = rangeValueAny as! AXValue
+        var selectionRange = CFRange()
+        guard AXValueGetValue(rangeValue, .cfRange, &selectionRange), selectionRange.length > 0 else {
+            return nil
+        }
+        return selectionAnchorLocation(for: focusedElement, selectionRange: selectionRange)
+    }
+
+    private func selectionAnchorLocation(for element: AXUIElement, selectionRange: CFRange) -> CGPoint? {
+        var rangeCopy = selectionRange
+        guard let axRange = AXValueCreate(.cfRange, &rangeCopy),
+              let boundsValueAny = copyParameterizedAttribute(
+                element: element,
+                attribute: kAXBoundsForRangeParameterizedAttribute as CFString,
+                parameter: axRange
+              ) else {
+            return nil
+        }
+        let boundsValue = boundsValueAny as! AXValue
+
+        var bounds = CGRect.zero
+        guard AXValueGetValue(boundsValue, .cgRect, &bounds),
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return nil
+        }
+
+        return CGPoint(x: bounds.midX, y: bounds.minY)
     }
 }

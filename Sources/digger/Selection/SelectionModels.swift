@@ -6,6 +6,7 @@ struct SelectionSnapshot {
     let element: AXUIElement
     let range: CFRange?
     let text: String
+    let anchorLocation: CGPoint?
     let timestamp: TimeInterval
 }
 
