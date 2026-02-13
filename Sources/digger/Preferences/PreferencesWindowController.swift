@@ -8,6 +8,7 @@ final class PreferencesWindowController: NSObject {
 
     init(
         onPopupFontSizeChange: @escaping (CGFloat) -> Void,
+        onPopupOpacityChange: @escaping (CGFloat) -> Void,
         onPopupLayoutChange: @escaping () -> Void,
         onLanguageChange: @escaping () -> Void,
         onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void,
@@ -33,6 +34,7 @@ final class PreferencesWindowController: NSObject {
         let rootView = PreferencesView(
             viewModel: viewModel,
             onPopupFontSizeChange: onPopupFontSizeChange,
+            onPopupOpacityChange: onPopupOpacityChange,
             onPopupLayoutChange: onPopupLayoutChange,
             onLanguageChange: { [weak self] in
                 self?.window.title = UIStrings.Preferences.title

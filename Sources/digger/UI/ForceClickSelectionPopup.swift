@@ -284,7 +284,6 @@ final class ForceClickSelectionPopup {
 
         contentView = DraggableContentView()
         contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
         contentView.layer?.cornerRadius = 8
         headerView = NSView()
         modelLabelField = NSTextField(labelWithString: "")
@@ -362,6 +361,7 @@ final class ForceClickSelectionPopup {
         }
 
         applyPopupTextSize(PopupFontPreferences.load())
+        applyPopupOpacity(AppPreferences.popupOpacity())
         applyStrings()
         updateActionButtons()
     }
@@ -461,6 +461,13 @@ final class ForceClickSelectionPopup {
             let contentSize = layoutContent(near: location)
             setWindowFrame(contentSize: contentSize, near: location, animated: false)
         }
+    }
+
+    func applyPopupOpacity(_ opacity: CGFloat) {
+        let clampedOpacity = min(max(opacity, 0), 100)
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor
+            .withAlphaComponent(clampedOpacity / 100)
+            .cgColor
     }
 
     func applyStrings() {
