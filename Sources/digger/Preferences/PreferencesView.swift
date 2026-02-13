@@ -74,6 +74,7 @@ struct PreferencesView: View {
 
     @ObservedObject var viewModel: PreferencesViewModel
     let onPopupFontSizeChange: (CGFloat) -> Void
+    let onPopupOpacityChange: (CGFloat) -> Void
     let onPopupLayoutChange: () -> Void
     let onLanguageChange: () -> Void
     let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
@@ -138,6 +139,15 @@ struct PreferencesView: View {
             }
             PopupFontPreferences.save(CGFloat(clamped))
             onPopupFontSizeChange(CGFloat(clamped))
+        }
+        .onChange(of: viewModel.popupOpacity) { newValue in
+            let clamped = min(max(newValue, 0), 100)
+            if clamped != newValue {
+                viewModel.popupOpacity = clamped
+                return
+            }
+            AppPreferences.setPopupOpacity(CGFloat(clamped))
+            onPopupOpacityChange(CGFloat(clamped))
         }
         .onChange(of: viewModel.popupShortcut) { newValue in
             AppPreferences.setPopupShortcut(newValue)
@@ -241,6 +251,20 @@ struct PreferencesView: View {
                 }
             } label: {
                 preferenceLabel(UIStrings.Preferences.popupFontSizeLabel)
+            }
+            LabeledContent {
+                HStack(spacing: 12) {
+                    Slider(
+                        value: $viewModel.popupOpacity,
+                        in: 0...100,
+                        step: 1
+                    )
+                    Text(String(format: "%.0f%%", viewModel.popupOpacity))
+                        .foregroundColor(.secondary)
+                        .frame(width: 54, alignment: .trailing)
+                }
+            } label: {
+                preferenceLabel(UIStrings.Preferences.popupOpacityLabel)
             }
             LabeledContent {
                 TextField("", text: $viewModel.popupTooltipDelayText)

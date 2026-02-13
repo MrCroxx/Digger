@@ -50,6 +50,7 @@ enum UIStrings {
         case preferencesTabAPI
         case preferencesTabCache
         case preferencesPopupFontSizeLabel
+        case preferencesPopupOpacityLabel
         case preferencesPopupTooltipDelayLabel
         case preferencesPopupShortcutLabel
         case preferencesPopupShortcutPlaceholder
@@ -144,6 +145,7 @@ enum UIStrings {
         static var tabAPI: String { value(.preferencesTabAPI) }
         static var tabCache: String { value(.preferencesTabCache) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
+        static var popupOpacityLabel: String { value(.preferencesPopupOpacityLabel) }
         static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
         static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
         static var popupShortcutPlaceholder: String { value(.preferencesPopupShortcutPlaceholder) }
@@ -247,6 +249,7 @@ enum UIStrings {
             .preferencesTabAPI: "API",
             .preferencesTabCache: "Cache",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
+            .preferencesPopupOpacityLabel: "Popup Opacity",
             .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
             .preferencesPopupShortcutLabel: "Trigger Shortcut",
             .preferencesPopupShortcutPlaceholder: "Press shortcut",
@@ -334,6 +337,7 @@ enum UIStrings {
             .preferencesTabAPI: "API",
             .preferencesTabCache: "缓存",
             .preferencesPopupFontSizeLabel: "弹窗字号",
+            .preferencesPopupOpacityLabel: "弹窗透明度",
             .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
             .preferencesPopupShortcutLabel: "触发快捷键",
             .preferencesPopupShortcutPlaceholder: "按下快捷键",
@@ -421,6 +425,7 @@ enum UIStrings {
             .preferencesTabAPI: "API",
             .preferencesTabCache: "キャッシュ",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
+            .preferencesPopupOpacityLabel: "ポップアップの透明度",
             .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
             .preferencesPopupShortcutLabel: "トリガーショートカット",
             .preferencesPopupShortcutPlaceholder: "ショートカットを入力",

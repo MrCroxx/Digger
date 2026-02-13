@@ -11,6 +11,7 @@ enum AppPreferences {
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
+    static let popupOpacityKey = "PopupOpacity"
     static let popupTooltipDelayMsKey = "PopupTooltipDelayMs"
     static let popupCollapsedFunctionIDsKey = "PopupCollapsedFunctionIDs"
     static let popupOriginalCollapsedKey = "PopupOriginalCollapsed"
@@ -33,6 +34,7 @@ enum AppPreferences {
     static let defaultBaselineWindowMs: CGFloat = 120
     static let defaultPopupMaxWidth: CGFloat = 640
     static let defaultPopupMaxHeight: CGFloat = 480
+    static let defaultPopupOpacity: CGFloat = 92
     static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
@@ -142,6 +144,19 @@ enum AppPreferences {
 
     static func setPopupMaxHeight(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 120)), forKey: popupMaxHeightKey)
+    }
+
+    static func popupOpacity() -> CGFloat {
+        if UserDefaults.standard.object(forKey: popupOpacityKey) == nil {
+            return defaultPopupOpacity
+        }
+        let stored = CGFloat(UserDefaults.standard.double(forKey: popupOpacityKey))
+        return min(max(stored, 0), 100)
+    }
+
+    static func setPopupOpacity(_ value: CGFloat) {
+        let clamped = min(max(value, 0), 100)
+        UserDefaults.standard.set(Double(clamped), forKey: popupOpacityKey)
     }
 
     static func popupTooltipDelayMs() -> CGFloat {

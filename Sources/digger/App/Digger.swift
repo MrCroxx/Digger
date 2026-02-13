@@ -31,6 +31,9 @@ struct Digger {
             onPopupFontSizeChange: { newSize in
                 forceClickSelectionPopup.applyPopupTextSize(newSize)
             },
+            onPopupOpacityChange: { newOpacity in
+                forceClickSelectionPopup.applyPopupOpacity(newOpacity)
+            },
             onPopupLayoutChange: {
                 forceClickSelectionPopup.refreshLayout()
             },
