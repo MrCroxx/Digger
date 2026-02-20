@@ -120,6 +120,22 @@ final class HoverTooltipWindow: NSWindow {
     }
 
     func show(text: String, near anchor: NSRect, fontSize: CGFloat) {
+        let size = prepareLayout(text: text, fontSize: fontSize)
+        let x = anchor.midX - size.width * 0.5
+        let y = anchor.minY - size.height - 6
+        setFrameOrigin(NSPoint(x: x, y: y))
+        orderFront(nil)
+    }
+
+    func showCentered(text: String, in frame: NSRect, fontSize: CGFloat) {
+        let size = prepareLayout(text: text, fontSize: fontSize)
+        let x = frame.midX - size.width * 0.5
+        let y = frame.midY - size.height * 0.5
+        setFrameOrigin(NSPoint(x: x, y: y))
+        orderFront(nil)
+    }
+
+    private func prepareLayout(text: String, fontSize: CGFloat) -> CGSize {
         label.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
         label.stringValue = text
         let font = label.font ?? NSFont.systemFont(ofSize: 11, weight: .regular)
@@ -148,10 +164,7 @@ final class HoverTooltipWindow: NSWindow {
             height: textHeight
         )
         setContentSize(NSSize(width: width, height: height))
-        let x = anchor.midX - width * 0.5
-        let y = anchor.minY - height - 6
-        setFrameOrigin(NSPoint(x: x, y: y))
-        orderFront(nil)
+        return CGSize(width: width, height: height)
     }
 
     func hide() {
@@ -334,6 +347,9 @@ final class ForceClickSelectionPopup {
         window.contentView = contentView
         window.onDismiss = { [weak self] in
             self?.dismissPopup()
+        }
+        window.onCopyShortcut = { [weak self] includeOriginal in
+            self?.handleCopyShortcut(includeOriginal: includeOriginal) ?? false
         }
 
         for button in actionButtons {
@@ -1300,11 +1316,16 @@ final class ForceClickSelectionPopup {
         tooltipWindow.show(text: text, near: rectOnScreen, fontSize: fontSize)
     }
 
-    private func showCopyFeedback(text: String, for button: HoverableIconButton) {
+    private func showCopyFeedback(text: String) {
         copyFeedbackTimer?.invalidate()
         copyFeedbackTimer = nil
         hoveredButton = nil
-        showTooltip(text: text, for: button)
+        tooltipTimer?.invalidate()
+        tooltipTimer = nil
+        let popupFrame = window.frame
+        let scale = PopupFontPreferences.load() / baseTextSize
+        let fontSize = baseTooltipSize * scale
+        tooltipWindow.showCentered(text: text, in: popupFrame, fontSize: fontSize)
         copyFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 0.9, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.tooltipWindow.hide()
@@ -1312,12 +1333,31 @@ final class ForceClickSelectionPopup {
         }
     }
 
-    @objc private func handleCopyAll() {
+    private func handleCopyShortcut(includeOriginal: Bool) -> Bool {
+        copyCombinedResults(includeOriginal: includeOriginal)
+    }
+
+    @discardableResult
+    private func copyCombinedResults(includeOriginal: Bool) -> Bool {
         hideTooltip()
-        let original = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = combinedResultText(includeOriginal: includeOriginal)
+        guard copyToPasteboard(combined) else {
+            return false
+        }
+        let successText = includeOriginal
+            ? UIStrings.Popup.copyAllWithOriginalSuccess
+            : UIStrings.Popup.copyAllWithoutOriginalSuccess
+        showCopyFeedback(text: successText)
+        return true
+    }
+
+    private func combinedResultText(includeOriginal: Bool) -> String {
         var sections: [String] = []
-        if !original.isEmpty {
-            sections.append("\(UIStrings.Popup.originalTitle)\n\(original)")
+        if includeOriginal {
+            let original = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !original.isEmpty {
+                sections.append("\(UIStrings.Popup.originalTitle)\n\(original)")
+            }
         }
         for section in functionSections where !section.isLoading {
             let result = section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1328,17 +1368,18 @@ final class ForceClickSelectionPopup {
             let displayTitle = title.isEmpty ? UIStrings.Popup.untitledFunction : title
             sections.append("\(displayTitle)\n\(result)")
         }
-        let combined = sections.joined(separator: "\n\n")
-        if copyToPasteboard(combined) {
-            showCopyFeedback(text: UIStrings.Popup.copyAllSuccess, for: copyAllButton)
-        }
+        return sections.joined(separator: "\n\n")
+    }
+
+    @objc private func handleCopyAll() {
+        copyCombinedResults(includeOriginal: true)
     }
 
     @objc private func handleCopyOriginal() {
         hideTooltip()
         let text = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if copyToPasteboard(text) {
-            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: originalCopyButton)
+            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess)
         }
     }
 
@@ -1356,7 +1397,7 @@ final class ForceClickSelectionPopup {
         }
         let text = section.textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         if copyToPasteboard(text) {
-            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess, for: sender)
+            showCopyFeedback(text: UIStrings.Popup.copyResultSuccess)
         }
     }
 
@@ -1539,6 +1580,7 @@ final class ForceClickSelectionPopup {
 
 final class PopupWindow: NSWindow {
     var onDismiss: (() -> Void)?
+    var onCopyShortcut: ((Bool) -> Bool)?
 
     override var canBecomeKey: Bool {
         true
@@ -1548,12 +1590,35 @@ final class PopupWindow: NSWindow {
         true
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let includeOriginal = includeOriginalIfCopyShortcut(event),
+           onCopyShortcut?(includeOriginal) == true {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func keyDown(with event: NSEvent) {
         if event.keyCode == CGKeyCode(kVK_Escape) {
             onDismiss?()
             return
         }
         super.keyDown(with: event)
+    }
+
+    private func includeOriginalIfCopyShortcut(_ event: NSEvent) -> Bool? {
+        guard let key = event.charactersIgnoringModifiers?.lowercased(), key == "c" else {
+            return nil
+        }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch flags {
+        case .command:
+            return false
+        case [.command, .shift]:
+            return true
+        default:
+            return nil
+        }
     }
 }
 

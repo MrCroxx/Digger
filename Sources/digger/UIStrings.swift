@@ -34,6 +34,8 @@ enum UIStrings {
         case popupCopyTranslationSuccess
         case popupCopyResultSuccess
         case popupCopyAllSuccess
+        case popupCopyAllWithoutOriginalSuccess
+        case popupCopyAllWithOriginalSuccess
         case popupProcessingPrefix
         case popupEmptyResult
         case popupEmptyPrompt
@@ -126,6 +128,8 @@ enum UIStrings {
         static var copyTranslationSuccess: String { value(.popupCopyTranslationSuccess) }
         static var copyResultSuccess: String { value(.popupCopyResultSuccess) }
         static var copyAllSuccess: String { value(.popupCopyAllSuccess) }
+        static var copyAllWithoutOriginalSuccess: String { value(.popupCopyAllWithoutOriginalSuccess) }
+        static var copyAllWithOriginalSuccess: String { value(.popupCopyAllWithOriginalSuccess) }
         static var processingPrefix: String { value(.popupProcessingPrefix) }
         static var emptyResult: String { value(.popupEmptyResult) }
         static var emptyPrompt: String { value(.popupEmptyPrompt) }
@@ -233,6 +237,8 @@ enum UIStrings {
             .popupCopyTranslationSuccess: "Translation copied",
             .popupCopyResultSuccess: "Result copied",
             .popupCopyAllSuccess: "All results copied",
+            .popupCopyAllWithoutOriginalSuccess: "Results copied (without original)",
+            .popupCopyAllWithOriginalSuccess: "Results copied (with original)",
             .popupProcessingPrefix: "Processing",
             .popupEmptyResult: "Result is empty",
             .popupEmptyPrompt: "Prompt is empty",
@@ -321,6 +327,8 @@ enum UIStrings {
             .popupCopyTranslationSuccess: "译文已复制",
             .popupCopyResultSuccess: "结果已复制",
             .popupCopyAllSuccess: "结果已复制",
+            .popupCopyAllWithoutOriginalSuccess: "已复制结果（不含原文）",
+            .popupCopyAllWithOriginalSuccess: "已复制结果（含原文）",
             .popupProcessingPrefix: "处理中",
             .popupEmptyResult: "结果为空",
             .popupEmptyPrompt: "提示语为空",
@@ -409,6 +417,8 @@ enum UIStrings {
             .popupCopyTranslationSuccess: "翻訳をコピーしました",
             .popupCopyResultSuccess: "結果をコピーしました",
             .popupCopyAllSuccess: "結果をコピーしました",
+            .popupCopyAllWithoutOriginalSuccess: "結果をコピーしました（原文なし）",
+            .popupCopyAllWithOriginalSuccess: "結果をコピーしました（原文あり）",
             .popupProcessingPrefix: "処理中",
             .popupEmptyResult: "結果が空です",
             .popupEmptyPrompt: "プロンプトが空です",
