@@ -12,7 +12,7 @@ struct WelcomeView: View {
                     .font(.system(size: 22, weight: .semibold))
                 Text(UIStrings.Welcome.subtitle)
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 12) {
@@ -44,7 +44,7 @@ struct WelcomeView: View {
             HStack {
                 Text(viewModel.status.allGranted ? UIStrings.Welcome.statusReady : UIStrings.Welcome.statusMissing)
                     .font(.system(size: 12))
-                    .foregroundColor(viewModel.status.allGranted ? .secondary : .orange)
+                    .foregroundStyle(viewModel.status.allGranted ? Color.secondary : Color.orange)
                 Spacer()
                 Button(UIStrings.Menu.preferences) {
                     onOpenPreferences()
@@ -74,7 +74,7 @@ private struct PermissionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundColor(granted ? .green : .orange)
+                .foregroundStyle(granted ? .green : .orange)
                 .font(.system(size: 18))
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
@@ -82,7 +82,7 @@ private struct PermissionRow: View {
                     .font(.system(size: 13, weight: .semibold))
                 Text(description)
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -92,13 +92,7 @@ private struct PermissionRow: View {
             }
             .controlSize(.small)
         }
-        .padding(12)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor))
-        )
+        .welcomeCardStyle()
     }
 }
 
@@ -111,7 +105,7 @@ private struct TipRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "info.circle.fill")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .font(.system(size: 18))
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
@@ -119,7 +113,7 @@ private struct TipRow: View {
                     .font(.system(size: 13, weight: .semibold))
                 Text(description)
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -129,12 +123,19 @@ private struct TipRow: View {
             }
             .controlSize(.small)
         }
-        .padding(12)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor))
-        )
+        .welcomeCardStyle()
+    }
+}
+
+private extension View {
+    func welcomeCardStyle() -> some View {
+        self
+            .padding(12)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor))
+            )
     }
 }
