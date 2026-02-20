@@ -115,10 +115,6 @@ struct PreferencesView: View {
             }
             lastFocusedField = newValue
         }
-        .onChange(of: viewModel.language) { newValue in
-            AppPreferences.setLanguage(newValue)
-            onLanguageChange()
-        }
         .onChange(of: viewModel.streamingEnabled) { newValue in
             AppPreferences.setTranslationStreamingEnabled(newValue)
         }
@@ -214,7 +210,7 @@ struct PreferencesView: View {
     private var generalPane: some View {
         VStack(alignment: .leading, spacing: 12) {
             LabeledContent {
-                Picker("", selection: $viewModel.language) {
+                Picker("", selection: languageBinding) {
                     ForEach(AppLanguage.allCases, id: \.self) { language in
                         Text(language.displayName).tag(language)
                     }
@@ -231,6 +227,20 @@ struct PreferencesView: View {
                 preferenceLabel(UIStrings.Preferences.startOnLoginLabel)
             }
         }
+    }
+
+    private var languageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { viewModel.language },
+            set: { newValue in
+                guard viewModel.language != newValue else {
+                    return
+                }
+                AppPreferences.setLanguage(newValue)
+                viewModel.language = newValue
+                onLanguageChange()
+            }
+        )
     }
 
     private var popupPane: some View {
