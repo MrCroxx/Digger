@@ -149,9 +149,6 @@ struct PreferencesView: View {
             AppPreferences.setPopupOpacity(CGFloat(clamped))
             onPopupOpacityChange(CGFloat(clamped))
         }
-        .onChange(of: viewModel.popupShortcut) { newValue in
-            AppPreferences.setPopupShortcut(newValue)
-        }
         .onChange(of: viewModel.apiKey) { newValue in
             AppPreferences.setApiKey(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -259,8 +256,8 @@ struct PreferencesView: View {
                         in: 0...100,
                         step: 1
                     )
-                    Text(String(format: "%.0f%%", viewModel.popupOpacity))
-                        .foregroundColor(.secondary)
+                    Text(viewModel.popupOpacity / 100, format: .percent.precision(.fractionLength(0)))
+                        .foregroundStyle(.secondary)
                         .frame(width: 54, alignment: .trailing)
                 }
             } label: {
@@ -317,7 +314,7 @@ struct PreferencesView: View {
                     openPromptEditor(.systemPrompt)
                 } label: {
                     Text(previewTextOrPlaceholder(for: viewModel.systemPrompt, placeholder: UIStrings.Preferences.systemPromptPlaceholder))
-                        .foregroundColor(viewModel.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
+                        .foregroundStyle(viewModel.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -332,22 +329,25 @@ struct PreferencesView: View {
                     Text(UIStrings.Preferences.customFunctionsTitle)
                         .font(.system(size: 13, weight: .semibold))
                     Spacer()
-                    Button("+") {
+                    Button {
                         addFunction()
+                    } label: {
+                        Image(systemName: "plus")
                     }
                     .frame(width: 24)
+                    .accessibilityLabel(UIStrings.Preferences.addFunction)
                 }
                 Text(UIStrings.Preferences.customFunctionsDescription)
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     Text(UIStrings.Preferences.functionTitleLabel)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 160, alignment: .leading)
                     Text(UIStrings.Preferences.functionPromptLabel)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Color.clear
                         .frame(width: 24, height: 1)
                 }
@@ -366,7 +366,7 @@ struct PreferencesView: View {
                                     openPromptEditor(.customPrompt(function.id))
                                 } label: {
                                     Text(previewTextOrPlaceholder(for: function.prompt, placeholder: UIStrings.Preferences.functionPromptPlaceholder))
-                                        .foregroundColor(function.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
+                                        .foregroundStyle(function.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
                                         .lineLimit(1)
                                         .truncationMode(.tail)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -376,12 +376,15 @@ struct PreferencesView: View {
                                 .buttonStyle(.plain)
                                 .preferenceInputContainerStyle()
 
-                                Button("-") {
+                                Button {
                                     removeFunction(function.id)
+                                } label: {
+                                    Image(systemName: "minus")
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                                 .frame(width: 24)
+                                .accessibilityLabel(UIStrings.Preferences.removeFunction)
                             }
                         }
                     }
@@ -471,7 +474,7 @@ struct PreferencesView: View {
                 if let message = apiTestMessage {
                     Text(message)
                         .font(.system(size: 12))
-                        .foregroundColor(apiTestMessageColor)
+                        .foregroundStyle(apiTestMessageColor)
                         .lineLimit(2)
                 }
             }
@@ -758,7 +761,7 @@ private struct MultilinePromptEditor: View {
             if text.isEmpty {
                 Text(placeholder)
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.leading, 5)
                     .padding(.top, 2)
                     .allowsHitTesting(false)
