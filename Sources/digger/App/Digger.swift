@@ -21,7 +21,7 @@ struct Digger {
             baselineWindow: windowMs / 1000,
             onForceClick: {
                 Task {
-                    await selectionHandler.handleForceClick()
+                    await selectionHandler.handleForceClick(source: .forceClick)
                 }
             }
         )

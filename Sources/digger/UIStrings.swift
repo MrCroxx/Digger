@@ -49,6 +49,7 @@ enum UIStrings {
         case preferencesTabPopup
         case preferencesTabFunctions
         case preferencesTabAdvanced
+        case preferencesForceClickPopupEnabledLabel
         case preferencesTabAPI
         case preferencesTabCache
         case preferencesPopupFontSizeLabel
@@ -146,6 +147,7 @@ enum UIStrings {
         static var tabPopup: String { value(.preferencesTabPopup) }
         static var tabFunctions: String { value(.preferencesTabFunctions) }
         static var tabAdvanced: String { value(.preferencesTabAdvanced) }
+        static var forceClickPopupEnabledLabel: String { value(.preferencesForceClickPopupEnabledLabel) }
         static var tabAPI: String { value(.preferencesTabAPI) }
         static var tabCache: String { value(.preferencesTabCache) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
@@ -251,7 +253,8 @@ enum UIStrings {
             .preferencesTabGeneral: "General",
             .preferencesTabPopup: "Popup",
             .preferencesTabFunctions: "Prompts",
-            .preferencesTabAdvanced: "Advanced",
+            .preferencesTabAdvanced: "Force Click",
+            .preferencesForceClickPopupEnabledLabel: "Show Popup on Force Click",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "Cache",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
@@ -341,7 +344,8 @@ enum UIStrings {
             .preferencesTabGeneral: "通用",
             .preferencesTabPopup: "弹窗",
             .preferencesTabFunctions: "提示语",
-            .preferencesTabAdvanced: "高级",
+            .preferencesTabAdvanced: "Force Click",
+            .preferencesForceClickPopupEnabledLabel: "Force Click 时显示弹窗",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "缓存",
             .preferencesPopupFontSizeLabel: "弹窗字号",
@@ -431,7 +435,8 @@ enum UIStrings {
             .preferencesTabGeneral: "一般",
             .preferencesTabPopup: "ポップアップ",
             .preferencesTabFunctions: "プロンプト",
-            .preferencesTabAdvanced: "詳細",
+            .preferencesTabAdvanced: "Force Click",
+            .preferencesForceClickPopupEnabledLabel: "Force Click でポップアップを表示",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "キャッシュ",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",

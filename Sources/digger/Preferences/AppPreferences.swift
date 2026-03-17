@@ -9,6 +9,7 @@ enum AppPreferences {
     static let pressureThresholdKey = "ForceClickPressureThreshold"
     static let pressureDeltaKey = "ForceClickPressureDelta"
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
+    static let forceClickPopupEnabledKey = "ForceClickPopupEnabled"
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
     static let popupOpacityKey = "PopupOpacity"
@@ -36,6 +37,7 @@ enum AppPreferences {
     static let defaultPopupMaxHeight: CGFloat = 480
     static let defaultPopupOpacity: CGFloat = 92
     static let defaultPopupTooltipDelayMs: CGFloat = 300
+    static let defaultForceClickPopupEnabled = true
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
     static let defaultTranslationStreaming = true
@@ -126,6 +128,17 @@ enum AppPreferences {
 
     static func setBaselineWindowMs(_ value: CGFloat) {
         UserDefaults.standard.set(Double(max(value, 10)), forKey: baselineWindowKey)
+    }
+
+    static func forceClickPopupEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: forceClickPopupEnabledKey) == nil {
+            return defaultForceClickPopupEnabled
+        }
+        return UserDefaults.standard.bool(forKey: forceClickPopupEnabledKey)
+    }
+
+    static func setForceClickPopupEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: forceClickPopupEnabledKey)
     }
 
     static func popupMaxWidth() -> CGFloat {
