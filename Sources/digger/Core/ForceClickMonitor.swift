@@ -51,6 +51,12 @@ final class ForceClickMonitor {
             return
         }
 
+        guard AppPreferences.forceClickPopupEnabled() else {
+            activeLock.withLockUnchecked { $0 = false }
+            hasForceClicked = false
+            return
+        }
+
         if hasForceClicked {
             activeLock.withLockUnchecked { $0 = true }
             return
@@ -94,6 +100,9 @@ final class ForceClickMonitor {
     }
 
     func shouldSuppressEvents() -> Bool {
-        activeLock.withLockUnchecked { $0 }
+        guard AppPreferences.forceClickPopupEnabled() else {
+            return false
+        }
+        return activeLock.withLockUnchecked { $0 }
     }
 }

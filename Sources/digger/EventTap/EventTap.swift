@@ -38,7 +38,7 @@ final class EventTapController {
             if !isPopupOrPreferencesFocused, shouldTriggerShortcut(event: event) {
                 let handler = selectionHandler
                 Task {
-                    await handler.handleForceClick()
+                    await handler.handleForceClick(source: .shortcut)
                 }
                 return nil
             }

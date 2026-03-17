@@ -145,6 +145,9 @@ struct PreferencesView: View {
             AppPreferences.setPopupOpacity(CGFloat(clamped))
             onPopupOpacityChange(CGFloat(clamped))
         }
+        .onChange(of: viewModel.forceClickPopupEnabled) { newValue in
+            AppPreferences.setForceClickPopupEnabled(newValue)
+        }
         .onChange(of: viewModel.apiKey) { newValue in
             AppPreferences.setApiKey(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -415,6 +418,9 @@ struct PreferencesView: View {
 
     private var advancedPane: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $viewModel.forceClickPopupEnabled) {
+                preferenceLabel(UIStrings.Preferences.forceClickPopupEnabledLabel)
+            }
             LabeledContent {
                 TextField("", text: $viewModel.pressureThresholdText)
                     .preferenceInputStyle()

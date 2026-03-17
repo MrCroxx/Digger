@@ -5,6 +5,11 @@ import Foundation
 import os
 
 final class ForceClickSelectionHandler: @unchecked Sendable {
+    enum TriggerSource {
+        case forceClick
+        case shortcut
+    }
+
     private let systemElement = AXUIElementCreateSystemWide()
     private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
     private let triggerCooldown: TimeInterval = 0.25
@@ -25,13 +30,16 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
         }
     }
 
-    func handleForceClick() async {
+    func handleForceClick(source: TriggerSource = .forceClick) async {
         guard shouldHandleTrigger() else {
             return
         }
+        let shouldShowPopup = source == .shortcut || AppPreferences.forceClickPopupEnabled()
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
             print(selectedText)
-            await popupRunner.run(text: selectedText)
+            if shouldShowPopup {
+                await popupRunner.run(text: selectedText)
+            }
             return
         }
 
@@ -43,7 +51,9 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             }
             if !cachedText.isEmpty {
                 print(cachedText)
-                await popupRunner.run(text: cachedText)
+                if shouldShowPopup {
+                    await popupRunner.run(text: cachedText)
+                }
                 return
             }
         }
@@ -52,12 +62,16 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
                !fallbackText.isEmpty {
                 print(fallbackText)
-                await popupRunner.run(text: fallbackText)
+                if shouldShowPopup {
+                    await popupRunner.run(text: fallbackText)
+                }
             }
             return
         }
         print(text)
-        await popupRunner.run(text: text)
+        if shouldShowPopup {
+            await popupRunner.run(text: text)
+        }
     }
 
     func cacheSelectionBeforeMouseDown() {
