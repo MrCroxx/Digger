@@ -2,9 +2,18 @@ import AppKit
 import Foundation
 
 final class PopupFunctionRunner: @unchecked Sendable {
-    func run(text: String, forceAPI: Bool = false, anchorLocation: CGPoint? = nil) async {
+    func run(
+        text: String,
+        originalText: String? = nil,
+        forceAPI: Bool = false,
+        anchorLocation: CGPoint? = nil
+    ) async {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
+            return
+        }
+        let trimmedOriginalText = (originalText ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOriginalText.isEmpty else {
             return
         }
         let resolvedLocation = anchorLocation ?? currentMouseLocation()
@@ -13,23 +22,65 @@ final class PopupFunctionRunner: @unchecked Sendable {
         }
         let requestID = UUID()
         let functions = PopupFunction.availableFunctions()
+        let dictionaryFunctions = functions.filter { $0.isSystemDictionary }
+        let aiFunctions = functions.filter { !$0.isSystemDictionary }
         let anchor = PopupAnchor(point: location)
         let context = PopupRequestContext(requestID: requestID, anchor: anchor, functions: functions)
-        await showLoading(original: trimmedText, context: context)
-
-        let apiKey = AppPreferences.apiKey().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !apiKey.isEmpty else {
-            await publishResultForAll(UIStrings.Translation.missingApiKey, context: context, shouldLog: true)
-            return
-        }
+        await showLoading(original: trimmedOriginalText, requestText: trimmedText, context: context)
 
         await withTaskGroup(of: Void.self) { group in
-            for function in functions {
+            for function in dictionaryFunctions {
+                group.addTask { [self] in
+                    await runSystemDictionary(function: function, text: trimmedText, context: context)
+                }
+            }
+            guard !aiFunctions.isEmpty else {
+                return
+            }
+            let apiKey = AppPreferences.apiKey().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !apiKey.isEmpty else {
+                for function in aiFunctions {
+                    group.addTask { [self] in
+                        await publishResult(
+                            UIStrings.Translation.missingApiKey,
+                            for: function,
+                            context: context,
+                            isFinal: true,
+                            shouldLog: true,
+                            isCacheHit: false
+                        )
+                    }
+                }
+                return
+            }
+            for function in aiFunctions {
                 group.addTask { [self] in
                     await run(function: function, text: trimmedText, context: context, forceAPI: forceAPI)
                 }
             }
         }
+    }
+
+    private func runSystemDictionary(function: PopupFunction, text: String, context: PopupRequestContext) async {
+        guard let result = SystemDictionaryService.lookup(text: text) else {
+            await publishResult(
+                UIStrings.Popup.dictionaryNoResult,
+                for: function,
+                context: context,
+                isFinal: true,
+                shouldLog: false,
+                isCacheHit: false
+            )
+            return
+        }
+        await updatePopupMarkdownResult(
+            markdown: result.markdownText,
+            plainText: result.plainText,
+            context: context,
+            functionID: function.id,
+            isFinal: true,
+            isCacheHit: false
+        )
     }
 
     private func run(
@@ -198,10 +249,11 @@ final class PopupFunctionRunner: @unchecked Sendable {
         )
     }
 
-    private func showLoading(original: String, context: PopupRequestContext) async {
+    private func showLoading(original: String, requestText: String, context: PopupRequestContext) async {
         await MainActor.run {
             forceClickSelectionPopup.showLoading(
                 original: original,
+                requestText: requestText,
                 near: context.anchor.point,
                 requestID: context.requestID,
                 functions: context.functions
@@ -215,19 +267,6 @@ final class PopupFunctionRunner: @unchecked Sendable {
                 for: context.requestID,
                 functionID: function.id,
                 near: context.anchor.point
-            )
-        }
-    }
-
-    private func publishResultForAll(_ text: String, context: PopupRequestContext, shouldLog: Bool) async {
-        for function in context.functions {
-            await publishResult(
-                text,
-                for: function,
-                context: context,
-                isFinal: true,
-                shouldLog: shouldLog,
-                isCacheHit: false
             )
         }
     }
@@ -277,6 +316,27 @@ final class PopupFunctionRunner: @unchecked Sendable {
         await MainActor.run {
             forceClickSelectionPopup.updateResult(
                 text,
+                for: context.requestID,
+                functionID: functionID,
+                near: context.anchor.point,
+                isFinal: isFinal,
+                isCacheHit: isCacheHit
+            )
+        }
+    }
+
+    private func updatePopupMarkdownResult(
+        markdown: String,
+        plainText: String,
+        context: PopupRequestContext,
+        functionID: UUID,
+        isFinal: Bool,
+        isCacheHit: Bool
+    ) async {
+        await MainActor.run {
+            forceClickSelectionPopup.updateMarkdownResult(
+                markdown: markdown,
+                plainText: plainText,
                 for: context.requestID,
                 functionID: functionID,
                 near: context.anchor.point,

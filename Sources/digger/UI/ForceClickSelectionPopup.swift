@@ -59,6 +59,7 @@ final class PopupResultTextView: NSTextView {
 final class HoverableIconButton: NSButton {
     var onHover: ((Bool) -> Void)?
     var tooltipText: String = ""
+    var ignoresClicks = false
     private var hoverTrackingArea: NSTrackingArea?
 
     override func updateTrackingAreas() {
@@ -80,6 +81,13 @@ final class HoverableIconButton: NSButton {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         onHover?(false)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if ignoresClicks {
+            return
+        }
+        super.mouseDown(with: event)
     }
 }
 
@@ -206,6 +214,7 @@ final class ForceClickSelectionPopup {
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
     private var lastAnchorLocation: CGPoint?
+    private var originalQueryText = ""
     private let baseTitleSize: CGFloat = 11
     private let baseTextSize: CGFloat = 12
     private let baseTooltipSize: CGFloat = 11
@@ -230,6 +239,7 @@ final class ForceClickSelectionPopup {
         let titleField: NSTextField
         let textView: PopupResultTextView
         let cacheHitButton: HoverableIconButton
+        let sourceHintButton: HoverableIconButton
         let collapseButton: HoverableIconButton
         let copyButton: HoverableIconButton
         let dividerView: NSView
@@ -382,14 +392,22 @@ final class ForceClickSelectionPopup {
         updateActionButtons()
     }
 
-    func showLoading(original: String, near location: CGPoint, requestID: UUID, functions: [PopupFunction]) {
+    func showLoading(
+        original: String,
+        requestText: String? = nil,
+        near location: CGPoint,
+        requestID: UUID,
+        functions: [PopupFunction]
+    ) {
         let trimmedOriginal = original.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedOriginal.isEmpty else {
             return
         }
+        let trimmedRequestText = requestText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? trimmedOriginal
 
         currentRequestID = requestID
         lastAnchorLocation = location
+        originalQueryText = trimmedRequestText
         cancelPendingLayoutUpdate()
         originalTextField.stringValue = trimmedOriginal
         originalTextRevision = takeNextTextRevision()
@@ -427,6 +445,38 @@ final class ForceClickSelectionPopup {
         let didUpdate = updateFunctionSection(
             functionID: functionID,
             text: updatedResult,
+            markdown: isFinal ? updatedResult : nil,
+            isFinal: isFinal,
+            isCacheHit: isCacheHit
+        )
+        guard didUpdate else {
+            return
+        }
+        updateActionButtons()
+        let shouldAnimate = isFinal && !isCacheHit && !functionSections.contains(where: { $0.isLoading })
+        scheduleLayoutUpdate(near: location, animated: shouldAnimate, streaming: !isFinal)
+    }
+
+    func updateMarkdownResult(
+        markdown: String,
+        plainText: String,
+        for requestID: UUID,
+        functionID: UUID,
+        near location: CGPoint,
+        isFinal: Bool,
+        isCacheHit: Bool
+    ) {
+        guard currentRequestID == requestID else {
+            return
+        }
+        let normalizedPlainText = isFinal
+            ? plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+            : plainText
+        lastAnchorLocation = location
+        let didUpdate = updateFunctionSection(
+            functionID: functionID,
+            text: normalizedPlainText,
+            markdown: markdown,
             isFinal: isFinal,
             isCacheHit: isCacheHit
         )
@@ -491,6 +541,10 @@ final class ForceClickSelectionPopup {
         originalCopyButton.tooltipText = UIStrings.Popup.copyResult
         updateOriginalCollapseButton()
         for index in functionSections.indices {
+            if functionSections[index].function.isSystemDictionary {
+                functionSections[index].titleField.stringValue = UIStrings.Popup.dictionaryTitle
+                functionSections[index].sourceHintButton.tooltipText = UIStrings.Popup.dictionarySourceHint
+            }
             functionSections[index].copyButton.tooltipText = UIStrings.Popup.copyResult
             functionSections[index].cacheHitButton.tooltipText = UIStrings.Popup.cacheHit
             updateCollapseButton(for: index)
@@ -521,6 +575,7 @@ final class ForceClickSelectionPopup {
                 section.titleField.removeFromSuperview()
                 section.textView.removeFromSuperview()
                 section.cacheHitButton.removeFromSuperview()
+                section.sourceHintButton.removeFromSuperview()
                 section.collapseButton.removeFromSuperview()
                 section.copyButton.removeFromSuperview()
                 section.dividerView.removeFromSuperview()
@@ -582,15 +637,31 @@ final class ForceClickSelectionPopup {
                 let cacheHitButton = ForceClickSelectionPopup.makeIconButton(
                     symbolName: "internaldrive.fill",
                     toolTip: UIStrings.Popup.cacheHit,
-                    target: self,
-                    action: #selector(handleSectionCacheHitIndicator(_:))
+                    target: nil,
+                    action: nil
                 )
                 cacheHitButton.isHidden = true
+                cacheHitButton.ignoresClicks = true
                 cacheHitButton.onHover = { [weak self, weak cacheHitButton] isHovering in
                     guard let self, let cacheHitButton else {
                         return
                     }
                     self.handleHover(isHovering, for: cacheHitButton)
+                }
+
+                let sourceHintButton = ForceClickSelectionPopup.makeIconButton(
+                    symbolName: "book.closed.fill",
+                    toolTip: UIStrings.Popup.dictionarySourceHint,
+                    target: nil,
+                    action: nil
+                )
+                sourceHintButton.isHidden = !function.isSystemDictionary
+                sourceHintButton.ignoresClicks = true
+                sourceHintButton.onHover = { [weak self, weak sourceHintButton] isHovering in
+                    guard let self, let sourceHintButton else {
+                        return
+                    }
+                    self.handleHover(isHovering, for: sourceHintButton)
                 }
 
                 let copyButton = ForceClickSelectionPopup.makeIconButton(
@@ -614,6 +685,7 @@ final class ForceClickSelectionPopup {
                 documentView.addSubview(titleField)
                 documentView.addSubview(textView)
                 documentView.addSubview(cacheHitButton)
+                documentView.addSubview(sourceHintButton)
                 documentView.addSubview(collapseButton)
                 documentView.addSubview(copyButton)
 
@@ -622,6 +694,7 @@ final class ForceClickSelectionPopup {
                     titleField: titleField,
                     textView: textView,
                     cacheHitButton: cacheHitButton,
+                    sourceHintButton: sourceHintButton,
                     collapseButton: collapseButton,
                     copyButton: copyButton,
                     dividerView: dividerView,
@@ -643,6 +716,7 @@ final class ForceClickSelectionPopup {
                     titleField: current.titleField,
                     textView: current.textView,
                     cacheHitButton: current.cacheHitButton,
+                    sourceHintButton: current.sourceHintButton,
                     collapseButton: current.collapseButton,
                     copyButton: current.copyButton,
                     dividerView: current.dividerView,
@@ -659,6 +733,7 @@ final class ForceClickSelectionPopup {
     private func updateFunctionSection(
         functionID: UUID,
         text: String,
+        markdown: String?,
         isFinal: Bool,
         isCacheHit: Bool
     ) -> Bool {
@@ -668,7 +743,11 @@ final class ForceClickSelectionPopup {
         var section = functionSections[index]
         var didChange = false
         let currentText = section.textView.string
-        if currentText != text {
+        if let markdown, isFinal {
+            replaceResultText(in: section.textView, withMarkdown: markdown, fallbackText: text)
+            section.textRevision = takeNextTextRevision()
+            didChange = true
+        } else if currentText != text {
             if let delta = streamingDelta(current: currentText, incoming: text), !delta.isEmpty {
                 appendResultText(in: section.textView, delta: delta)
             } else {
@@ -709,11 +788,8 @@ final class ForceClickSelectionPopup {
             .font: font,
             .foregroundColor: NSColor.labelColor
         ]
-        let fullRange = NSRange(location: 0, length: textView.string.utf16.count)
-        if fullRange.length > 0, let storage = textView.textStorage {
-            storage.beginEditing()
-            storage.setAttributes(textView.typingAttributes, range: fullRange)
-            storage.endEditing()
+        if let storage = textView.textStorage {
+            applyPopupDisplayAttributes(to: storage, baseFont: font)
         }
     }
 
@@ -728,6 +804,62 @@ final class ForceClickSelectionPopup {
         let attributes = textView.typingAttributes
         let appended = NSAttributedString(string: delta, attributes: attributes)
         textView.textStorage?.append(appended)
+    }
+
+    private func replaceResultText(in textView: PopupResultTextView, withMarkdown markdown: String, fallbackText: String) {
+        if #available(macOS 13.0, *),
+           let parsed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .full,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+           ) {
+            let mutable = NSMutableAttributedString(parsed)
+            let baseFont = textView.font ?? NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
+            applyPopupDisplayAttributes(to: mutable, baseFont: baseFont)
+            textView.textStorage?.setAttributedString(mutable)
+            return
+        }
+        replaceResultText(in: textView, with: fallbackText)
+    }
+
+    private func applyPopupDisplayAttributes(to storage: NSMutableAttributedString, baseFont: NSFont) {
+        let fullRange = NSRange(location: 0, length: storage.length)
+        guard fullRange.length > 0 else {
+            return
+        }
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineSpacing = max(1, baseFont.pointSize * 0.15)
+        paragraphStyle.paragraphSpacing = max(6, baseFont.pointSize * 0.45)
+
+        storage.beginEditing()
+        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+        storage.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            let resolved = resizedDisplayFont(value as? NSFont, baseFont: baseFont)
+            storage.addAttribute(.font, value: resolved, range: range)
+        }
+        storage.endEditing()
+    }
+
+    private func resizedDisplayFont(_ font: NSFont?, baseFont: NSFont) -> NSFont {
+        guard let font else {
+            return baseFont
+        }
+        if abs(font.pointSize - baseFont.pointSize) < 0.01 {
+            return font
+        }
+        if let direct = NSFont(descriptor: font.fontDescriptor, size: baseFont.pointSize) {
+            return direct
+        }
+        let traits = font.fontDescriptor.symbolicTraits
+        let descriptor = baseFont.fontDescriptor.withSymbolicTraits(traits)
+        if let matched = NSFont(descriptor: descriptor, size: baseFont.pointSize) {
+            return matched
+        }
+        return baseFont
     }
 
     private func streamingDelta(current: String, incoming: String) -> String? {
@@ -845,7 +977,13 @@ final class ForceClickSelectionPopup {
         let originalSectionButtonCount = 2
 
         func sectionHeaderButtonsWidth(for section: FunctionSection) -> CGFloat {
-            let buttonCount = section.isCacheHit ? 3 : 2
+            var buttonCount = 2
+            if section.isCacheHit {
+                buttonCount += 1
+            }
+            if section.function.isSystemDictionary {
+                buttonCount += 1
+            }
             return CGFloat(buttonCount) * sectionButtonSize + CGFloat(buttonCount) * sectionButtonSpacing
         }
 
@@ -1058,32 +1196,44 @@ final class ForceClickSelectionPopup {
                 width: max(0, availableWidth - sectionHeaderButtonsWidth(for: section)),
                 height: ceil(titleSize.height)
             )
-            let collapseButtonX = paddingLeft + availableWidth - sectionButtonSize
-            let copyButtonX = collapseButtonX - sectionButtonSpacing - sectionButtonSize
-            let cacheButtonX = copyButtonX - sectionButtonSpacing - sectionButtonSize
             let buttonY = y + max(0, (ceil(titleSize.height) - sectionButtonSize) * 0.5)
+            var nextButtonX = paddingLeft + availableWidth - sectionButtonSize
             section.collapseButton.frame = NSRect(
-                x: collapseButtonX,
+                x: nextButtonX,
                 y: buttonY,
                 width: sectionButtonSize,
                 height: sectionButtonSize
             )
+            nextButtonX -= sectionButtonSpacing + sectionButtonSize
             section.copyButton.frame = NSRect(
-                x: copyButtonX,
+                x: nextButtonX,
                 y: buttonY,
                 width: sectionButtonSize,
                 height: sectionButtonSize
             )
+            nextButtonX -= sectionButtonSpacing + sectionButtonSize
             if section.isCacheHit {
                 section.cacheHitButton.isHidden = false
                 section.cacheHitButton.frame = NSRect(
-                    x: cacheButtonX,
+                    x: nextButtonX,
+                    y: buttonY,
+                    width: sectionButtonSize,
+                    height: sectionButtonSize
+                )
+                nextButtonX -= sectionButtonSpacing + sectionButtonSize
+            } else {
+                section.cacheHitButton.isHidden = true
+            }
+            if section.function.isSystemDictionary {
+                section.sourceHintButton.isHidden = false
+                section.sourceHintButton.frame = NSRect(
+                    x: nextButtonX,
                     y: buttonY,
                     width: sectionButtonSize,
                     height: sectionButtonSize
                 )
             } else {
-                section.cacheHitButton.isHidden = true
+                section.sourceHintButton.isHidden = true
             }
             let isCollapsed = section.isCollapsed
             let textHeight = isCollapsed ? 0 : max(ceil(textSizeValue.height), 16)
@@ -1217,6 +1367,7 @@ final class ForceClickSelectionPopup {
     private func resetContentForNextShow() {
         currentRequestID = nil
         lastAnchorLocation = nil
+        originalQueryText = ""
         originalTextField.stringValue = ""
         originalTextRevision = takeNextTextRevision()
         streamFadeTimestamps.removeAll()
@@ -1267,6 +1418,9 @@ final class ForceClickSelectionPopup {
             section.cacheHitButton.isHidden = !section.isCacheHit
             section.cacheHitButton.isEnabled = true
             section.cacheHitButton.alphaValue = section.isCacheHit ? enabledAlpha : 0
+            section.sourceHintButton.isHidden = !section.function.isSystemDictionary
+            section.sourceHintButton.isEnabled = section.function.isSystemDictionary
+            section.sourceHintButton.alphaValue = section.function.isSystemDictionary ? enabledAlpha : 0
         }
     }
 
@@ -1417,7 +1571,7 @@ final class ForceClickSelectionPopup {
 
     @objc private func handleRetry() {
         hideTooltip()
-        let text = originalTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = originalQueryText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             return
         }
@@ -1426,11 +1580,6 @@ final class ForceClickSelectionPopup {
             y: window.frame.maxY + 12
         )
         onRetry?(text, retryAnchor)
-    }
-
-    @objc private func handleSectionCacheHitIndicator(_ _: HoverableIconButton) {
-        hideTooltip()
-        return
     }
 
     private func copyToPasteboard(_ text: String) -> Bool {
@@ -1447,7 +1596,7 @@ final class ForceClickSelectionPopup {
         symbolName: String,
         toolTip: String,
         target: AnyObject?,
-        action: Selector
+        action: Selector?
     ) -> HoverableIconButton {
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
         image?.isTemplate = true

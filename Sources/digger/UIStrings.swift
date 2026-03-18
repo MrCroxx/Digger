@@ -26,6 +26,9 @@ enum UIStrings {
         case translationLoadingPrefix
         case popupOriginalTitle
         case popupTranslationTitle
+        case popupDictionaryTitle
+        case popupDictionaryNoResult
+        case popupDictionarySourceHint
         case popupCopyTranslation
         case popupCopyResult
         case popupCopyAll
@@ -56,6 +59,7 @@ enum UIStrings {
         case preferencesPopupTooltipDelayLabel
         case preferencesPopupShortcutLabel
         case preferencesPopupShortcutPlaceholder
+        case preferencesPopupSystemDictionaryLabel
         case preferencesLanguageLabel
         case preferencesStreamingLabel
         case preferencesStartOnLoginLabel
@@ -120,6 +124,9 @@ enum UIStrings {
     enum Popup {
         static var originalTitle: String { value(.popupOriginalTitle) }
         static var translationTitle: String { value(.popupTranslationTitle) }
+        static var dictionaryTitle: String { value(.popupDictionaryTitle) }
+        static var dictionaryNoResult: String { value(.popupDictionaryNoResult) }
+        static var dictionarySourceHint: String { value(.popupDictionarySourceHint) }
         static var copyTranslation: String { value(.popupCopyTranslation) }
         static var copyResult: String { value(.popupCopyResult) }
         static var copyAll: String { value(.popupCopyAll) }
@@ -153,6 +160,7 @@ enum UIStrings {
         static var popupTooltipDelayLabel: String { value(.preferencesPopupTooltipDelayLabel) }
         static var popupShortcutLabel: String { value(.preferencesPopupShortcutLabel) }
         static var popupShortcutPlaceholder: String { value(.preferencesPopupShortcutPlaceholder) }
+        static var popupSystemDictionaryLabel: String { value(.preferencesPopupSystemDictionaryLabel) }
         static var languageLabel: String { value(.preferencesLanguageLabel) }
         static var streamingLabel: String { value(.preferencesStreamingLabel) }
         static var startOnLoginLabel: String { value(.preferencesStartOnLoginLabel) }
@@ -229,6 +237,9 @@ enum UIStrings {
             .translationLoadingPrefix: "Translating",
             .popupOriginalTitle: "Original",
             .popupTranslationTitle: "Translation",
+            .popupDictionaryTitle: "Dictionary",
+            .popupDictionaryNoResult: "No definition found in system dictionaries",
+            .popupDictionarySourceHint: "System Dictionary",
             .popupCopyTranslation: "Copy Translation",
             .popupCopyResult: "Copy Result",
             .popupCopyAll: "Copy All Results",
@@ -259,6 +270,7 @@ enum UIStrings {
             .preferencesPopupTooltipDelayLabel: "Popup Tooltip Delay (ms)",
             .preferencesPopupShortcutLabel: "Trigger Shortcut",
             .preferencesPopupShortcutPlaceholder: "Press shortcut",
+            .preferencesPopupSystemDictionaryLabel: "Enable System Dictionary",
             .preferencesLanguageLabel: "Language",
             .preferencesStreamingLabel: "Stream Output",
             .preferencesStartOnLoginLabel: "Start on Login",
@@ -319,6 +331,9 @@ enum UIStrings {
             .translationLoadingPrefix: "翻译中",
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "译文",
+            .popupDictionaryTitle: "辞典",
+            .popupDictionaryNoResult: "未在系统辞典中找到释义",
+            .popupDictionarySourceHint: "系统辞典",
             .popupCopyTranslation: "复制译文",
             .popupCopyResult: "复制结果",
             .popupCopyAll: "复制所有结果",
@@ -349,6 +364,7 @@ enum UIStrings {
             .preferencesPopupTooltipDelayLabel: "弹窗提示延迟 (毫秒)",
             .preferencesPopupShortcutLabel: "触发快捷键",
             .preferencesPopupShortcutPlaceholder: "按下快捷键",
+            .preferencesPopupSystemDictionaryLabel: "启用系统辞典",
             .preferencesLanguageLabel: "语言",
             .preferencesStreamingLabel: "流式输出",
             .preferencesStartOnLoginLabel: "登录时启动",
@@ -409,6 +425,9 @@ enum UIStrings {
             .translationLoadingPrefix: "翻訳中",
             .popupOriginalTitle: "原文",
             .popupTranslationTitle: "翻訳",
+            .popupDictionaryTitle: "辞書",
+            .popupDictionaryNoResult: "システム辞書で定義が見つかりませんでした",
+            .popupDictionarySourceHint: "システム辞書",
             .popupCopyTranslation: "翻訳をコピー",
             .popupCopyResult: "結果をコピー",
             .popupCopyAll: "すべての結果をコピー",
@@ -439,6 +458,7 @@ enum UIStrings {
             .preferencesPopupTooltipDelayLabel: "ポップアップのツールチップ遅延 (ミリ秒)",
             .preferencesPopupShortcutLabel: "トリガーショートカット",
             .preferencesPopupShortcutPlaceholder: "ショートカットを入力",
+            .preferencesPopupSystemDictionaryLabel: "システム辞書を有効化",
             .preferencesLanguageLabel: "言語",
             .preferencesStreamingLabel: "ストリーミング出力",
             .preferencesStartOnLoginLabel: "ログイン時に起動",

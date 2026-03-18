@@ -115,6 +115,10 @@ struct PreferencesView: View {
             }
             lastFocusedField = newValue
         }
+        .onChange(of: viewModel.systemDictionaryEnabled) { newValue in
+            AppPreferences.setSystemDictionaryEnabled(newValue)
+            onCustomFunctionsChange()
+        }
         .onChange(of: viewModel.streamingEnabled) { newValue in
             AppPreferences.setTranslationStreamingEnabled(newValue)
         }
@@ -245,6 +249,9 @@ struct PreferencesView: View {
 
     private var popupPane: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $viewModel.systemDictionaryEnabled) {
+                preferenceLabel(UIStrings.Preferences.popupSystemDictionaryLabel)
+            }
             LabeledContent {
                 HStack(spacing: 12) {
                     Slider(

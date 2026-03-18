@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class PreferencesViewModel: ObservableObject {
     @Published var language: AppLanguage = AppPreferences.language()
+    @Published var systemDictionaryEnabled: Bool = AppPreferences.systemDictionaryEnabled()
     @Published var streamingEnabled: Bool = AppPreferences.translationStreamingEnabled()
     @Published var popupFontSize: Double = Double(PopupFontPreferences.load())
     @Published var popupOpacity: Double = Double(AppPreferences.popupOpacity())
@@ -26,6 +27,7 @@ final class PreferencesViewModel: ObservableObject {
 
     func refresh() {
         language = AppPreferences.language()
+        systemDictionaryEnabled = AppPreferences.systemDictionaryEnabled()
         streamingEnabled = AppPreferences.translationStreamingEnabled()
         popupFontSize = Double(PopupFontPreferences.load())
         popupOpacity = Double(AppPreferences.popupOpacity())

@@ -5,6 +5,11 @@ import Foundation
 import os
 
 final class ForceClickSelectionHandler: @unchecked Sendable {
+    private struct SelectionContent {
+        let plainText: String
+        let markdownText: String?
+    }
+
     private let systemElement = AXUIElementCreateSystemWide()
     private let triggerLock = OSAllocatedUnfairLock<TimeInterval>(uncheckedState: 0)
     private let triggerCooldown: TimeInterval = 0.25
@@ -30,34 +35,65 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
             return
         }
         if let selectedText = fetchSelectedTextOnly(), !selectedText.isEmpty {
-            print(selectedText)
-            await popupRunner.run(text: selectedText)
+            let copied = copySelectionContent(selectWordIfNeeded: false)
+            await runPopup(
+                plainText: selectedText,
+                markdownText: copied?.markdownText
+            )
             return
         }
 
         if let cachedSelection = consumeSelectionSnapshotIfValid() {
             _ = restoreSelection(cachedSelection)
+            let copied = copySelectionContent(selectWordIfNeeded: false)
             var cachedText = cachedSelection.text
             if cachedText.isEmpty {
-                cachedText = copySelectionText(selectWordIfNeeded: false) ?? ""
+                cachedText = copied?.plainText ?? ""
             }
             if !cachedText.isEmpty {
-                print(cachedText)
-                await popupRunner.run(text: cachedText)
+                await runPopup(
+                    plainText: cachedText,
+                    markdownText: copied?.markdownText
+                )
                 return
             }
         }
 
         guard let text = fetchOrSelectText(), !text.isEmpty else {
-            if let fallbackText = copySelectionText(selectWordIfNeeded: shouldSelectWordFallback()),
-               !fallbackText.isEmpty {
-                print(fallbackText)
-                await popupRunner.run(text: fallbackText)
+            if let fallbackContent = copySelectionContent(selectWordIfNeeded: shouldSelectWordFallback()) {
+                await runPopup(
+                    plainText: fallbackContent.plainText,
+                    markdownText: fallbackContent.markdownText
+                )
             }
             return
         }
-        print(text)
-        await popupRunner.run(text: text)
+        let copied = copySelectionContent(selectWordIfNeeded: false)
+        await runPopup(
+            plainText: text,
+            markdownText: copied?.markdownText
+        )
+    }
+
+    private func runPopup(
+        plainText: String,
+        markdownText: String?,
+        forceAPI: Bool = false,
+        anchorLocation: CGPoint? = nil
+    ) async {
+        let trimmedPlainText = plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPlainText.isEmpty else {
+            return
+        }
+        let trimmedMarkdownText = markdownText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestText = (trimmedMarkdownText?.isEmpty == false) ? trimmedMarkdownText! : trimmedPlainText
+        print(trimmedPlainText)
+        await popupRunner.run(
+            text: requestText,
+            originalText: trimmedPlainText,
+            forceAPI: forceAPI,
+            anchorLocation: anchorLocation
+        )
     }
 
     func cacheSelectionBeforeMouseDown() {
@@ -331,25 +367,25 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
     }
 
 
-    private func copySelectionText(selectWordIfNeeded: Bool) -> String? {
+    private func copySelectionContent(selectWordIfNeeded: Bool) -> SelectionContent? {
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
         let changeCount = pasteboard.changeCount
 
         sendCopyCommand()
-        var copiedText = waitForPasteboardText(
+        var copiedContent = waitForPasteboardContent(
             pasteboard: pasteboard,
             originalChangeCount: changeCount,
             timeout: 0.25
         )
 
-        if copiedText == nil, selectWordIfNeeded {
+        if copiedContent == nil, selectWordIfNeeded {
             if let location = currentEventTapMouseLocation() ?? currentMouseLocation() {
                 performDoubleClick(at: location)
                 Thread.sleep(forTimeInterval: 0.06)
                 let retryChangeCount = pasteboard.changeCount
                 sendCopyCommand()
-                copiedText = waitForPasteboardText(
+                copiedContent = waitForPasteboardContent(
                     pasteboard: pasteboard,
                     originalChangeCount: retryChangeCount,
                     timeout: 0.25
@@ -358,25 +394,168 @@ final class ForceClickSelectionHandler: @unchecked Sendable {
         }
 
         snapshot.restore(to: pasteboard)
-        return copiedText
+        return copiedContent
     }
 
-    private func waitForPasteboardText(
+    private func waitForPasteboardContent(
         pasteboard: NSPasteboard,
         originalChangeCount: Int,
         timeout: TimeInterval
-    ) -> String? {
+    ) -> SelectionContent? {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         while ProcessInfo.processInfo.systemUptime < deadline {
             let didChange = pasteboard.changeCount != originalChangeCount
-            if didChange,
-               let text = pasteboard.string(forType: .string),
-               !text.isEmpty {
-                return text
+            if didChange, let content = selectionContent(from: pasteboard) {
+                return content
             }
             Thread.sleep(forTimeInterval: 0.02)
         }
         return nil
+    }
+
+    private func selectionContent(from pasteboard: NSPasteboard) -> SelectionContent? {
+        let plainText = pasteboard.string(forType: .string)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let markdown = markdownFromPasteboard(pasteboard)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let markdown, !markdown.isEmpty {
+            let resolvedPlainText = plainText.isEmpty ? plainTextFromMarkdown(markdown) : plainText
+            guard !resolvedPlainText.isEmpty else {
+                return nil
+            }
+            return SelectionContent(plainText: resolvedPlainText, markdownText: markdown)
+        }
+        guard !plainText.isEmpty else {
+            return nil
+        }
+        return SelectionContent(plainText: plainText, markdownText: nil)
+    }
+
+    private func markdownFromPasteboard(_ pasteboard: NSPasteboard) -> String? {
+        if let htmlData = pasteboard.data(forType: .html),
+           let markdown = markdownFromHTMLData(htmlData) {
+            return markdown
+        }
+        if let rtfData = pasteboard.data(forType: .rtf),
+           let markdown = markdownFromRTFData(rtfData) {
+            return markdown
+        }
+        return nil
+    }
+
+    private func markdownFromHTMLData(_ data: Data) -> String? {
+        guard let attributed = try? NSAttributedString(
+            data: data,
+            options: [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ],
+            documentAttributes: nil
+        ) else {
+            return nil
+        }
+        return markdownFromAttributedString(attributed)
+    }
+
+    private func markdownFromRTFData(_ data: Data) -> String? {
+        guard let attributed = try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        ) else {
+            return nil
+        }
+        return markdownFromAttributedString(attributed)
+    }
+
+    private func markdownFromAttributedString(_ attributed: NSAttributedString) -> String? {
+        guard attributed.length > 0 else {
+            return nil
+        }
+
+        var output = ""
+        let fullRange = NSRange(location: 0, length: attributed.length)
+        attributed.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
+            let segment = attributed.attributedSubstring(from: range).string
+            guard !segment.isEmpty else {
+                return
+            }
+            let lines = segment.components(separatedBy: "\n")
+            for index in lines.indices {
+                let line = lines[index]
+                if !line.isEmpty {
+                    output += styledMarkdownText(line, attributes: attributes)
+                }
+                if index < lines.count - 1 {
+                    output += "\n"
+                }
+            }
+        }
+
+        let normalized = normalizeMarkdownText(output)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func styledMarkdownText(_ text: String, attributes: [NSAttributedString.Key: Any]) -> String {
+        var value = text.replacingOccurrences(of: "\u{00A0}", with: " ")
+        let traits = (attributes[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
+        let isBold = traits.contains(.bold)
+        let isItalic = traits.contains(.italic)
+        if let linkURL = attributes[.link] as? URL {
+            value = "[\(value)](\(linkURL.absoluteString))"
+        } else if let linkString = attributes[.link] as? String, !linkString.isEmpty {
+            value = "[\(value)](\(linkString))"
+        }
+        if isBold && isItalic {
+            return "***\(value)***"
+        }
+        if isBold {
+            return "**\(value)**"
+        }
+        if isItalic {
+            return "*\(value)*"
+        }
+        return value
+    }
+
+    private func normalizeMarkdownText(_ markdown: String) -> String {
+        var value = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        value = value.replacingOccurrences(
+            of: #"(?m)^\s*[•◦▪]\s*"#,
+            with: "- ",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(
+            of: #"\n{3,}"#,
+            with: "\n\n",
+            options: .regularExpression
+        )
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func plainTextFromMarkdown(_ markdown: String) -> String {
+        if #available(macOS 13.0, *),
+           let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .full,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+           ) {
+            let resolved = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !resolved.isEmpty {
+                return resolved
+            }
+        }
+
+        let stripped = markdown.replacingOccurrences(
+            of: #"[*_`\[\]#>-]"#,
+            with: "",
+            options: .regularExpression
+        )
+        return stripped.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func sendCopyCommand() {

@@ -17,6 +17,7 @@ enum AppPreferences {
     static let popupOriginalCollapsedKey = "PopupOriginalCollapsed"
     static let popupShortcutKeyCodeKey = "PopupShortcutKeyCode"
     static let popupShortcutModifiersKey = "PopupShortcutModifiers"
+    static let systemDictionaryEnabledKey = "SystemDictionaryEnabled"
     static let translationStreamingKey = "TranslationStreaming"
     static let translationCacheMaxSizeGiBKey = "TranslationCacheMaxSizeGiB"
     static let translationCacheTTLHoursKey = "TranslationCacheTTLHours"
@@ -38,6 +39,7 @@ enum AppPreferences {
     static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
     static let defaultPopupShortcutModifiers: CGEventFlags = [.maskCommand]
+    static let defaultSystemDictionaryEnabled = true
     static let defaultTranslationStreaming = true
     static let defaultTranslationCacheMaxSizeGiB = 1.0
     static let defaultTranslationCacheTTLHours = 168.0
@@ -234,6 +236,17 @@ enum AppPreferences {
 
     static func setTranslationStreamingEnabled(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: translationStreamingKey)
+    }
+
+    static func systemDictionaryEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: systemDictionaryEnabledKey) == nil {
+            return defaultSystemDictionaryEnabled
+        }
+        return UserDefaults.standard.bool(forKey: systemDictionaryEnabledKey)
+    }
+
+    static func setSystemDictionaryEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: systemDictionaryEnabledKey)
     }
 
     static func translationCacheMaxSizeGiB() -> Double {
