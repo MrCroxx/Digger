@@ -25,7 +25,12 @@ actor OpenAITranslator {
         client = OpenAI(configuration: configuration)
     }
 
-    static func testConnection(apiKey: String, endpoint: String, model: String) async throws -> String {
+    static func testConnection(
+        apiKey: String,
+        endpoint: String,
+        model: String,
+        thinkEffort: String
+    ) async throws -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else {
             throw TestError.missingModel
@@ -34,10 +39,12 @@ actor OpenAITranslator {
             throw TestError.missingApiKey
         }
         let client = OpenAI(configuration: configuration)
+        let reasoningEffort = reasoningEffort(thinkEffort)
         let query = ChatQuery(
             messages: [.user(.init(content: .string("Reply with OK.")))],
             model: trimmedModel,
-            temperature: 0
+            reasoningEffort: reasoningEffort,
+            temperature: reasoningEffort == nil ? 0 : nil
         )
         let result = try await client.chats(query: query)
         return result.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -172,6 +179,8 @@ actor OpenAITranslator {
     ) -> (query: ChatQuery, cacheKey: TranslationDiskCache.RequestKey) {
         let model = AppPreferences.model()
         let endpoint = AppPreferences.endpointOrDefault()
+        let thinkEffort = AppPreferences.thinkEffort()
+        let reasoningEffort = Self.reasoningEffort(thinkEffort)
         let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
         var messages: [ChatQuery.ChatCompletionMessageParam] = []
         if !systemPrompt.isEmpty {
@@ -183,16 +192,33 @@ actor OpenAITranslator {
         let query = ChatQuery(
             messages: messages,
             model: model,
-            temperature: 0.2
+            reasoningEffort: reasoningEffort,
+            temperature: reasoningEffort == nil ? 0.2 : nil
         )
         let cacheKey = TranslationDiskCache.makeRequestKey(
             input: text,
             prompt: prompt,
             systemPrompt: systemPrompt,
             model: model,
-            endpoint: endpoint
+            endpoint: endpoint,
+            thinkEffort: thinkEffort
         )
         return (query: query, cacheKey: cacheKey)
+    }
+
+    private static func reasoningEffort(_ value: String) -> ChatQuery.ReasoningEffort? {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return nil
+        }
+        switch value.lowercased() {
+        case "none": return ChatQuery.ReasoningEffort.none
+        case "minimal": return .minimal
+        case "low": return .low
+        case "medium": return .medium
+        case "high": return .high
+        default: return .customValue(value)
+        }
     }
 
     private static func singleValueStream(output: String) -> AsyncThrowingStream<String, Error> {

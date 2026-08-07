@@ -8,6 +8,7 @@ actor TranslationDiskCache {
         let systemPromptHash: String
         let modelHash: String
         let endpointHash: String
+        let thinkEffortHash: String
         let keyHash: String
     }
 
@@ -18,6 +19,7 @@ actor TranslationDiskCache {
         let systemPromptHash: String
         let modelHash: String
         let endpointHash: String
+        let thinkEffortHash: String
         let keyHash: String
         let output: String
         let createdAt: Date
@@ -31,7 +33,7 @@ actor TranslationDiskCache {
 
     static let shared = TranslationDiskCache()
 
-    private static let schemaVersion = 1
+    private static let schemaVersion = 2
     private let fileManager = FileManager.default
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -54,15 +56,17 @@ actor TranslationDiskCache {
         prompt: String,
         systemPrompt: String,
         model: String,
-        endpoint: String
+        endpoint: String,
+        thinkEffort: String
     ) -> RequestKey {
         let inputHash = sha256Hex(input)
         let promptHash = sha256Hex(prompt)
         let systemPromptHash = sha256Hex(systemPrompt)
         let modelHash = sha256Hex(model)
         let endpointHash = sha256Hex(endpoint)
+        let thinkEffortHash = sha256Hex(thinkEffort)
         let keyHash = sha256Hex(
-            "v\(schemaVersion)|\(inputHash)|\(promptHash)|\(systemPromptHash)|\(modelHash)|\(endpointHash)"
+            "v\(schemaVersion)|\(inputHash)|\(promptHash)|\(systemPromptHash)|\(modelHash)|\(endpointHash)|\(thinkEffortHash)"
         )
         return RequestKey(
             inputHash: inputHash,
@@ -70,6 +74,7 @@ actor TranslationDiskCache {
             systemPromptHash: systemPromptHash,
             modelHash: modelHash,
             endpointHash: endpointHash,
+            thinkEffortHash: thinkEffortHash,
             keyHash: keyHash
         )
     }
@@ -88,7 +93,8 @@ actor TranslationDiskCache {
               entry.promptHash == key.promptHash,
               entry.systemPromptHash == key.systemPromptHash,
               entry.modelHash == key.modelHash,
-              entry.endpointHash == key.endpointHash
+              entry.endpointHash == key.endpointHash,
+              entry.thinkEffortHash == key.thinkEffortHash
         else {
             try? fileManager.removeItem(at: fileURL)
             return nil
@@ -124,6 +130,7 @@ actor TranslationDiskCache {
             systemPromptHash: key.systemPromptHash,
             modelHash: key.modelHash,
             endpointHash: key.endpointHash,
+            thinkEffortHash: key.thinkEffortHash,
             keyHash: key.keyHash,
             output: output,
             createdAt: Date()

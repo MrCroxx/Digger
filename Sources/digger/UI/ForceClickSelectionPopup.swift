@@ -4,6 +4,17 @@ import Foundation
 import QuartzCore
 
 final class DraggableContentView: NSView {
+    var onEffectiveAppearanceChange: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onEffectiveAppearanceChange?()
+    }
+
     override var mouseDownCanMoveWindow: Bool {
         true
     }
@@ -15,6 +26,27 @@ final class DraggableContentView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         super.hitTest(point)
     }
+}
+
+final class AppearanceAwareView: NSView {
+    var onEffectiveAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onEffectiveAppearanceChange?()
+    }
+}
+
+private func layerColor(
+    _ color: NSColor,
+    alphaComponent: CGFloat? = nil,
+    appearance: NSAppearance
+) -> CGColor {
+    var resolvedColor = color.cgColor
+    appearance.performAsCurrentDrawingAppearance {
+        resolvedColor = (alphaComponent.map(color.withAlphaComponent) ?? color).cgColor
+    }
+    return resolvedColor
 }
 
 final class DraggableScrollView: NSScrollView {
@@ -85,19 +117,20 @@ final class HoverableIconButton: NSButton {
 
 final class HoverTooltipWindow: NSWindow {
     private let label: NSTextField
+    private let backgroundView: AppearanceAwareView
     private let padding = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
     private let maxTextWidth: CGFloat = 220
 
     init() {
         label = NSTextField(wrappingLabelWithString: "")
+        backgroundView = AppearanceAwareView()
         label.font = NSFont.systemFont(ofSize: 11, weight: .regular)
         label.textColor = .labelColor
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         label.cell?.wraps = true
         label.cell?.usesSingleLineMode = false
-        let contentView = NSView()
-        contentView.addSubview(label)
+        backgroundView.addSubview(label)
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 120, height: 24),
             styleMask: .borderless,
@@ -109,10 +142,23 @@ final class HoverTooltipWindow: NSWindow {
         hasShadow = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .transient]
-        contentView.wantsLayer = true
-        contentView.layer?.cornerRadius = 6
-        contentView.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.95).cgColor
-        self.contentView = contentView
+        backgroundView.wantsLayer = true
+        backgroundView.layer?.cornerRadius = 6
+        self.contentView = backgroundView
+        backgroundView.onEffectiveAppearanceChange = { [weak self] in
+            self?.applyAppearanceColors()
+        }
+        applyAppearanceColors()
+    }
+
+    private func applyAppearanceColors() {
+        let appearance = backgroundView.effectiveAppearance
+        label.textColor = .labelColor
+        backgroundView.layer?.backgroundColor = layerColor(
+            NSColor.controlBackgroundColor,
+            alphaComponent: 0.95,
+            appearance: appearance
+        )
     }
 
     override var canBecomeKey: Bool {
@@ -345,6 +391,7 @@ final class ForceClickSelectionPopup {
         window.collectionBehavior = [.canJoinAllSpaces, .transient]
         window.ignoresMouseEvents = false
         window.contentView = contentView
+        window.initialFirstResponder = contentView
         window.onDismiss = { [weak self] in
             self?.dismissPopup()
         }
@@ -380,6 +427,10 @@ final class ForceClickSelectionPopup {
         applyPopupOpacity(AppPreferences.popupOpacity())
         applyStrings()
         updateActionButtons()
+        contentView.onEffectiveAppearanceChange = { [weak self] in
+            self?.applyAppearanceColors()
+        }
+        applyAppearanceColors()
     }
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID, functions: [PopupFunction]) {
@@ -403,9 +454,11 @@ final class ForceClickSelectionPopup {
         }
         startLoadingAnimation()
         updateActionButtons()
+        applyAppearanceColors()
         let contentSize = layoutContent(near: location)
         setWindowFrame(contentSize: contentSize, near: location, animated: false)
         NSApp.activate(ignoringOtherApps: true)
+        window.makeFirstResponder(contentView)
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -481,9 +534,31 @@ final class ForceClickSelectionPopup {
 
     func applyPopupOpacity(_ opacity: CGFloat) {
         let clampedOpacity = min(max(opacity, 0), 100)
-        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor
-            .withAlphaComponent(clampedOpacity / 100)
-            .cgColor
+        contentView.layer?.backgroundColor = layerColor(
+            NSColor.windowBackgroundColor,
+            alphaComponent: clampedOpacity / 100,
+            appearance: contentView.effectiveAppearance
+        )
+    }
+
+    private func applyAppearanceColors() {
+        let appearance = contentView.effectiveAppearance
+        let primaryColor = NSColor.labelColor
+        let secondaryColor = NSColor.secondaryLabelColor
+        let separatorColor = layerColor(NSColor.separatorColor, appearance: appearance)
+
+        originalTitleField.textColor = secondaryColor
+        originalTextField.textColor = primaryColor
+        modelLabelField.textColor = secondaryColor
+        headerDividerView.layer?.backgroundColor = separatorColor
+        for section in functionSections {
+            section.titleField.textColor = secondaryColor
+            section.dividerView.layer?.backgroundColor = separatorColor
+            let font = section.textView.font
+                ?? NSFont.systemFont(ofSize: PopupFontPreferences.load(), weight: .medium)
+            applyResultTextViewStyle(section.textView, font: font)
+        }
+        applyPopupOpacity(AppPreferences.popupOpacity())
     }
 
     func applyStrings() {
@@ -703,11 +778,12 @@ final class ForceClickSelectionPopup {
     }
 
     private func applyResultTextViewStyle(_ textView: PopupResultTextView, font: NSFont) {
+        let textColor = NSColor.labelColor
         textView.font = font
-        textView.textColor = .labelColor
+        textView.textColor = textColor
         textView.typingAttributes = [
             .font: font,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: textColor
         ]
         let fullRange = NSRange(location: 0, length: textView.string.utf16.count)
         if fullRange.length > 0, let storage = textView.textStorage {

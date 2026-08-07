@@ -80,6 +80,7 @@ enum UIStrings {
         case preferencesApiTestFailedPrefix
         case preferencesApiTestMissingKey
         case preferencesApiTestMissingModel
+        case preferencesThinkEffortDefault
         case preferencesCacheMaxSizeLabel
         case preferencesCacheTTLHoursLabel
         case preferencesOpenCacheDirectoryButton
@@ -178,6 +179,7 @@ enum UIStrings {
         static var apiTestFailedPrefix: String { value(.preferencesApiTestFailedPrefix) }
         static var apiTestMissingKey: String { value(.preferencesApiTestMissingKey) }
         static var apiTestMissingModel: String { value(.preferencesApiTestMissingModel) }
+        static var thinkEffortDefault: String { value(.preferencesThinkEffortDefault) }
         static var cacheMaxSizeLabel: String { value(.preferencesCacheMaxSizeLabel) }
         static var cacheTTLHoursLabel: String { value(.preferencesCacheTTLHoursLabel) }
         static var openCacheDirectoryButton: String { value(.preferencesOpenCacheDirectoryButton) }
@@ -285,6 +287,7 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "Test failed:",
             .preferencesApiTestMissingKey: "Please enter an API key first",
             .preferencesApiTestMissingModel: "Please enter a model first",
+            .preferencesThinkEffortDefault: "Default (not sent)",
             .preferencesCacheMaxSizeLabel: "Cache Max Size (GiB)",
             .preferencesCacheTTLHoursLabel: "Cache TTL (Hours)",
             .preferencesOpenCacheDirectoryButton: "Open Cache Directory",
@@ -376,6 +379,7 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "测试失败:",
             .preferencesApiTestMissingKey: "请先输入 API Key",
             .preferencesApiTestMissingModel: "请先输入模型",
+            .preferencesThinkEffortDefault: "默认（不发送）",
             .preferencesCacheMaxSizeLabel: "缓存上限 (GiB)",
             .preferencesCacheTTLHoursLabel: "缓存过期时间 (小时)",
             .preferencesOpenCacheDirectoryButton: "打开缓存目录",
@@ -467,6 +471,7 @@ enum UIStrings {
             .preferencesApiTestFailedPrefix: "テストに失敗しました:",
             .preferencesApiTestMissingKey: "API Key を入力してください",
             .preferencesApiTestMissingModel: "モデルを入力してください",
+            .preferencesThinkEffortDefault: "デフォルト（送信しない）",
             .preferencesCacheMaxSizeLabel: "キャッシュ上限 (GiB)",
             .preferencesCacheTTLHoursLabel: "キャッシュ有効期限 (時間)",
             .preferencesOpenCacheDirectoryButton: "キャッシュフォルダを開く",

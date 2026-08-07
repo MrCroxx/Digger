@@ -11,7 +11,7 @@ A macOS menu bar app that detects force-click selection and runs customizable AI
 - Multiple prompt functions executed in parallel for one input.
 - Streaming and non-streaming response modes.
 - Disk cache with configurable size and TTL.
-- Configurable OpenAI endpoint and model.
+- Configurable OpenAI endpoint, model, and reasoning effort.
 - Localized UI (English, Simplified Chinese, Japanese).
 - Built-in onboarding for Accessibility permission and setup tips.
 
@@ -77,7 +77,7 @@ docs/             Design notes and implementation logs
 
 Most runtime settings are managed in-app via Preferences and persisted with `UserDefaults`, including:
 
-- OpenAI API key / model / endpoint
+- OpenAI API key / model / endpoint / reasoning effort (`THINK_EFFORT`)
 - Force-click thresholds
 - Popup behavior and shortcut
 - Prompt list and system prompt

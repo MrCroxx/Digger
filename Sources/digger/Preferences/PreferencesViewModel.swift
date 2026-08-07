@@ -13,6 +13,7 @@ final class PreferencesViewModel: ObservableObject {
     @Published var apiKey: String = AppPreferences.apiKey()
     @Published var endpoint: String = AppPreferences.endpoint()
     @Published var model: String = AppPreferences.model()
+    @Published var thinkEffort: String = AppPreferences.thinkEffort()
     @Published var translationCacheMaxSizeGiBText: String = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
     @Published var translationCacheTTLHoursText: String = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
     @Published var pressureThresholdText: String = String(format: "%.2f", AppPreferences.pressureThreshold())
@@ -37,6 +38,7 @@ final class PreferencesViewModel: ObservableObject {
         apiKey = AppPreferences.apiKey()
         endpoint = AppPreferences.endpoint()
         model = AppPreferences.model()
+        thinkEffort = AppPreferences.thinkEffort()
         translationCacheMaxSizeGiBText = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
         translationCacheTTLHoursText = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
         pressureThresholdText = String(format: "%.2f", AppPreferences.pressureThreshold())
@@ -69,7 +71,8 @@ final class PreferencesViewModel: ObservableObject {
             _ = try await OpenAITranslator.testConnection(
                 apiKey: apiKeyText,
                 endpoint: AppPreferences.resolvedEndpoint(endpoint),
-                model: modelText
+                model: modelText,
+                thinkEffort: thinkEffort
             )
             apiTestState = .success(UIStrings.Preferences.apiTestSuccess)
         } catch {

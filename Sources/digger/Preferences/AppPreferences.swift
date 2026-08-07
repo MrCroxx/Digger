@@ -6,6 +6,7 @@ enum AppPreferences {
     static let apiKeyKey = "OpenAIAPIKey"
     static let endpointKey = "OpenAIEndpoint"
     static let modelKey = "OpenAIModel"
+    static let thinkEffortKey = "OpenAIThinkEffort"
     static let pressureThresholdKey = "ForceClickPressureThreshold"
     static let pressureDeltaKey = "ForceClickPressureDelta"
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
@@ -100,6 +101,20 @@ enum AppPreferences {
             UserDefaults.standard.removeObject(forKey: modelKey)
         } else {
             UserDefaults.standard.set(trimmed, forKey: modelKey)
+        }
+    }
+
+    static func thinkEffort() -> String {
+        UserDefaults.standard.string(forKey: thinkEffortKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    static func setThinkEffort(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: thinkEffortKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: thinkEffortKey)
         }
     }
 
