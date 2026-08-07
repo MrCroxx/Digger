@@ -4,6 +4,8 @@ import Foundation
 import QuartzCore
 
 final class DraggableContentView: NSView {
+    var onEffectiveAppearanceChange: (() -> Void)?
+
     override var mouseDownCanMoveWindow: Bool {
         true
     }
@@ -14,6 +16,11 @@ final class DraggableContentView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         super.hitTest(point)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onEffectiveAppearanceChange?()
     }
 }
 
@@ -53,6 +60,24 @@ final class DraggableScrollView: NSScrollView {
 final class PopupResultTextView: NSTextView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
+    }
+}
+
+/// A hairline divider that follows the system appearance automatically
+/// (lighter in light mode, darker in dark mode) without any manual color
+/// re-application.
+final class DividerView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        guard bounds.width > 0, bounds.height > 0 else {
+            return
+        }
+        NSColor.separatorColor.setFill()
+        dirtyRect.fill()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }
 
@@ -111,8 +136,13 @@ final class HoverTooltipWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces, .transient]
         contentView.wantsLayer = true
         contentView.layer?.cornerRadius = 6
-        contentView.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.95).cgColor
         self.contentView = contentView
+        refreshAppearanceColors()
+    }
+
+    func refreshAppearanceColors() {
+        contentView?.layer?.backgroundColor = NSColor.controlBackgroundColor
+            .withAlpha(0.95, for: effectiveAppearance)
     }
 
     override var canBecomeKey: Bool {
@@ -188,7 +218,7 @@ final class ForceClickSelectionPopup {
     private let contentView: DraggableContentView
     private let headerView: NSView
     private let modelLabelField: NSTextField
-    private let headerDividerView: NSView
+    private let headerDividerView: DividerView
     private let scrollView: DraggableScrollView
     private let documentView: NSView
     private let originalCopyButton: HoverableIconButton
@@ -206,6 +236,7 @@ final class ForceClickSelectionPopup {
     private var loadingDotCount = 0
     private var currentRequestID: UUID?
     private var lastAnchorLocation: CGPoint?
+    private var appearanceChangeObserver: NSObjectProtocol?
     private let baseTitleSize: CGFloat = 11
     private let baseTextSize: CGFloat = 12
     private let baseTooltipSize: CGFloat = 11
@@ -250,7 +281,9 @@ final class ForceClickSelectionPopup {
 
         originalTextField = NSTextField(labelWithString: "")
         originalTextField.font = NSFont.systemFont(ofSize: baseTextSize, weight: .medium)
-        originalTextField.textColor = .labelColor
+        // `textColor` is fully opaque (unlike `labelColor`, which is ~85% alpha
+        // and renders grayish on the popup background).
+        originalTextField.textColor = .textColor
         originalTextField.backgroundColor = .clear
         originalTextField.isEditable = false
         originalTextField.isSelectable = true
@@ -306,9 +339,7 @@ final class ForceClickSelectionPopup {
         modelLabelField.isEditable = false
         modelLabelField.isSelectable = false
         modelLabelField.lineBreakMode = .byTruncatingTail
-        headerDividerView = NSView()
-        headerDividerView.wantsLayer = true
-        headerDividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        headerDividerView = DividerView()
         documentView = NSView()
         documentView.addSubview(originalTitleField)
         documentView.addSubview(originalTextField)
@@ -380,6 +411,22 @@ final class ForceClickSelectionPopup {
         applyPopupOpacity(AppPreferences.popupOpacity())
         applyStrings()
         updateActionButtons()
+        refreshAppearanceSensitiveColors()
+
+        contentView.onEffectiveAppearanceChange = { [weak self] in
+            self?.refreshAppearanceSensitiveColors()
+        }
+        // System-wide appearance changes (e.g. dark mode toggle) are delivered
+        // as a distributed notification even while the popup is hidden.
+        appearanceChangeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshAppearanceSensitiveColors()
+            }
+        }
     }
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID, functions: [PopupFunction]) {
@@ -391,6 +438,7 @@ final class ForceClickSelectionPopup {
         currentRequestID = requestID
         lastAnchorLocation = location
         cancelPendingLayoutUpdate()
+        refreshAppearanceSensitiveColors()
         originalTextField.stringValue = trimmedOriginal
         originalTextRevision = takeNextTextRevision()
         originalIsCollapsed = AppPreferences.popupOriginalCollapsed()
@@ -482,8 +530,17 @@ final class ForceClickSelectionPopup {
     func applyPopupOpacity(_ opacity: CGFloat) {
         let clampedOpacity = min(max(opacity, 0), 100)
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor
-            .withAlphaComponent(clampedOpacity / 100)
-            .cgColor
+            .withAlpha(clampedOpacity / 100, for: window.effectiveAppearance)
+    }
+
+    /// Re-applies layer-based colors that are resolved per appearance.
+    /// Layer `backgroundColor` is a static CGColor snapshot, so it must be
+    /// refreshed whenever the effective appearance changes (e.g. dark mode).
+    /// Dividers are `DividerView`s that draw themselves per appearance,
+    /// so only the popup background and tooltip need refreshing here.
+    private func refreshAppearanceSensitiveColors() {
+        applyPopupOpacity(AppPreferences.popupOpacity())
+        tooltipWindow.refreshAppearanceColors()
     }
 
     func applyStrings() {
@@ -606,9 +663,7 @@ final class ForceClickSelectionPopup {
                     self.handleHover(isHovering, for: copyButton)
                 }
 
-                let dividerView = NSView()
-                dividerView.wantsLayer = true
-                dividerView.layer?.backgroundColor = NSColor.separatorColor.cgColor
+                let dividerView = DividerView()
 
                 documentView.addSubview(dividerView)
                 documentView.addSubview(titleField)
@@ -704,10 +759,12 @@ final class ForceClickSelectionPopup {
 
     private func applyResultTextViewStyle(_ textView: PopupResultTextView, font: NSFont) {
         textView.font = font
-        textView.textColor = .labelColor
+        // `textColor` is fully opaque (unlike `labelColor`, which is ~85% alpha
+        // and renders grayish on the popup background).
+        textView.textColor = .textColor
         textView.typingAttributes = [
             .font: font,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: NSColor.textColor
         ]
         let fullRange = NSRange(location: 0, length: textView.string.utf16.count)
         if fullRange.length > 0, let storage = textView.textStorage {
@@ -1624,3 +1681,34 @@ final class PopupWindow: NSWindow {
 
 @MainActor
 let forceClickSelectionPopup = ForceClickSelectionPopup()
+
+extension NSColor {
+    /// Alpha variant that stays appearance-aware: the color re-resolves per
+    /// appearance at use time (safe for NSColor-valued properties like
+    /// `backgroundColor`, which AppKit resolves at draw time).
+    func withDynamicAlpha(_ alpha: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            var resolved = self
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = self.withAlphaComponent(alpha)
+            }
+            return resolved
+        }
+    }
+
+    /// Resolves this (possibly dynamic) color for the given appearance and
+    /// applies `alpha`, returning a static CGColor suitable for layer colors.
+    ///
+    /// `withAlphaComponent` freezes dynamic colors to the appearance that is
+    /// current at call time, so the alpha must be applied while the target
+    /// appearance is current to keep light/dark mode correct. Layer colors are
+    /// static snapshots, so callers must refresh them when the effective
+    /// appearance changes.
+    func withAlpha(_ alpha: CGFloat, for appearance: NSAppearance) -> CGColor {
+        var resolved: CGColor = cgColor
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = withAlphaComponent(alpha).cgColor
+        }
+        return resolved
+    }
+}

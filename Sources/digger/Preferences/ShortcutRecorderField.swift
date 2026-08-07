@@ -56,6 +56,11 @@ final class ShortcutRecorderField: NSTextField {
         NSSound.beep()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateFocusAppearance()
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         return handleShortcutEvent(event)
     }
@@ -123,13 +128,14 @@ final class ShortcutRecorderField: NSTextField {
         guard let layer else {
             return
         }
+        let appearance = window?.effectiveAppearance ?? NSAppearance.currentDrawing()
         if isFocused {
             layer.borderWidth = 1.5
-            layer.borderColor = NSColor.controlAccentColor.cgColor
-            backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08)
+            layer.borderColor = NSColor.controlAccentColor.withAlpha(1, for: appearance)
+            backgroundColor = NSColor.controlAccentColor.withDynamicAlpha(0.08)
         } else {
             layer.borderWidth = 1.0
-            layer.borderColor = NSColor.separatorColor.cgColor
+            layer.borderColor = NSColor.separatorColor.withAlpha(1, for: appearance)
             backgroundColor = NSColor.textBackgroundColor
         }
     }
