@@ -157,6 +157,9 @@ struct PreferencesView: View {
         .onChange(of: viewModel.model) { newValue in
             AppPreferences.setModel(newValue)
         }
+        .onChange(of: viewModel.thinkEffort) { newValue in
+            AppPreferences.setThinkEffort(newValue)
+        }
         .onChange(of: viewModel.systemPrompt) { newValue in
             AppPreferences.setSystemPrompt(newValue)
         }
@@ -475,6 +478,18 @@ struct PreferencesView: View {
                     .frame(width: 260)
             } label: {
                 preferenceLabel("OPENAI_MODEL")
+            }
+            LabeledContent {
+                Picker("", selection: $viewModel.thinkEffort) {
+                    Text(UIStrings.Preferences.thinkEffortDefault).tag("")
+                    ForEach(["none", "minimal", "low", "medium", "high"], id: \.self) { effort in
+                        Text(effort).tag(effort)
+                    }
+                }
+                    .labelsHidden()
+                    .frame(width: 260)
+            } label: {
+                preferenceLabel("THINK_EFFORT")
             }
             HStack(spacing: 12) {
                 Button(UIStrings.Preferences.apiTestLabel) {
