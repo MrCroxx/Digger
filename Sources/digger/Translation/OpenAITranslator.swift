@@ -25,7 +25,7 @@ actor OpenAITranslator {
         client = OpenAI(configuration: configuration)
     }
 
-    static func testConnection(apiKey: String, endpoint: String, model: String) async throws -> String {
+    static func testConnection(apiKey: String, endpoint: String, model: String, reasoningEffort: String = "") async throws -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else {
             throw TestError.missingModel
@@ -34,10 +34,12 @@ actor OpenAITranslator {
             throw TestError.missingApiKey
         }
         let client = OpenAI(configuration: configuration)
+        let effortValue = reasoningEffortValue(reasoningEffort)
         let query = ChatQuery(
             messages: [.user(.init(content: .string("Reply with OK.")))],
             model: trimmedModel,
-            temperature: 0
+            reasoningEffort: effortValue,
+            temperature: (effortValue != nil && modelRejectsTemperature(trimmedModel)) ? nil : 0
         )
         let result = try await client.chats(query: query)
         return result.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -173,6 +175,7 @@ actor OpenAITranslator {
         let model = AppPreferences.model()
         let endpoint = AppPreferences.endpointOrDefault()
         let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+        let reasoningEffort = AppPreferences.reasoningEffort()
         var messages: [ChatQuery.ChatCompletionMessageParam] = []
         if !systemPrompt.isEmpty {
             messages.append(.system(.init(content: .textContent(systemPrompt))))
@@ -180,19 +183,46 @@ actor OpenAITranslator {
         messages.append(.system(.init(content: .textContent(prompt))))
         messages.append(.user(.init(content: .string(text))))
 
+        let effortValue = Self.reasoningEffortValue(reasoningEffort)
         let query = ChatQuery(
             messages: messages,
             model: model,
-            temperature: 0.2
+            reasoningEffort: effortValue,
+            // Reasoning-only models (OpenAI o-series etc.) reject `temperature`;
+            // DeepSeek-compatible APIs accept it alongside `reasoning_effort`,
+            // so keep the app's deterministic temperature there.
+            temperature: (effortValue != nil && Self.modelRejectsTemperature(model)) ? nil : 0.2
         )
         let cacheKey = TranslationDiskCache.makeRequestKey(
             input: text,
             prompt: prompt,
             systemPrompt: systemPrompt,
             model: model,
-            endpoint: endpoint
+            endpoint: endpoint,
+            reasoningEffort: reasoningEffort
         )
         return (query: query, cacheKey: cacheKey)
+    }
+
+    /// Maps a configured think effort string to the SDK value, or nil for "auto".
+    private static func reasoningEffortValue(_ raw: String) -> ChatQuery.ReasoningEffort? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        return .customValue(trimmed)
+    }
+
+    /// Reasoning-only models (OpenAI o-series, DeepSeek reasoner) reject the
+    /// `temperature` parameter; other models (e.g. DeepSeek-compatible APIs)
+    /// accept it alongside `reasoning_effort`.
+    private static func modelRejectsTemperature(_ model: String) -> Bool {
+        let normalized = model.lowercased()
+        return normalized.hasPrefix("o1")
+            || normalized.hasPrefix("o3")
+            || normalized.hasPrefix("o4")
+            || normalized.hasPrefix("o5")
+            || normalized.contains("reasoner")
     }
 
     private static func singleValueStream(output: String) -> AsyncThrowingStream<String, Error> {

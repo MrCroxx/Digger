@@ -6,6 +6,7 @@ enum AppPreferences {
     static let apiKeyKey = "OpenAIAPIKey"
     static let endpointKey = "OpenAIEndpoint"
     static let modelKey = "OpenAIModel"
+    static let reasoningEffortKey = "ReasoningEffort"
     static let pressureThresholdKey = "ForceClickPressureThreshold"
     static let pressureDeltaKey = "ForceClickPressureDelta"
     static let baselineWindowKey = "ForceClickBaselineWindowMs"
@@ -100,6 +101,23 @@ enum AppPreferences {
             UserDefaults.standard.removeObject(forKey: modelKey)
         } else {
             UserDefaults.standard.set(trimmed, forKey: modelKey)
+        }
+    }
+
+    /// The configured reasoning effort (think effort), e.g. "low"/"medium"/"high".
+    /// Empty string means "auto" — the parameter is not sent to the API.
+    static func reasoningEffort() -> String {
+        let stored = UserDefaults.standard.string(forKey: reasoningEffortKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return stored ?? ""
+    }
+
+    static func setReasoningEffort(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: reasoningEffortKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: reasoningEffortKey)
         }
     }
 

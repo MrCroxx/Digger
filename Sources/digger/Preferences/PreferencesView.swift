@@ -72,6 +72,34 @@ struct PreferencesView: View {
         }
     }
 
+    private enum ReasoningEffortOption: String, CaseIterable, Identifiable {
+        case auto = ""
+        case none = "none"
+        case minimal = "minimal"
+        case low = "low"
+        case medium = "medium"
+        case high = "high"
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .auto:
+                return "Auto"
+            case .none:
+                return "None"
+            case .minimal:
+                return "Minimal"
+            case .low:
+                return "Low"
+            case .medium:
+                return "Medium"
+            case .high:
+                return "High"
+            }
+        }
+    }
+
     @ObservedObject var viewModel: PreferencesViewModel
     let onPopupFontSizeChange: (CGFloat) -> Void
     let onPopupOpacityChange: (CGFloat) -> Void
@@ -156,6 +184,9 @@ struct PreferencesView: View {
         }
         .onChange(of: viewModel.model) { newValue in
             AppPreferences.setModel(newValue)
+        }
+        .onChange(of: viewModel.reasoningEffort) { newValue in
+            AppPreferences.setReasoningEffort(newValue)
         }
         .onChange(of: viewModel.systemPrompt) { newValue in
             AppPreferences.setSystemPrompt(newValue)
@@ -475,6 +506,17 @@ struct PreferencesView: View {
                     .frame(width: 260)
             } label: {
                 preferenceLabel("OPENAI_MODEL")
+            }
+            LabeledContent {
+                Picker("", selection: $viewModel.reasoningEffort) {
+                    ForEach(ReasoningEffortOption.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 260)
+            } label: {
+                preferenceLabel("REASONING_EFFORT (THINK)")
             }
             HStack(spacing: 12) {
                 Button(UIStrings.Preferences.apiTestLabel) {
