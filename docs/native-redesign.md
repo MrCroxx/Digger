@@ -46,6 +46,7 @@ This is a fit assessment, not a measured Electron memory/latency comparison. Sou
 - `/usr/bin/python3 scripts/test-transport.py`: all tests plus a temporary loopback HTTP server. Covers non-streaming/streaming output, disk cache, HTTP errors, reasoning request payloads, network disconnect on cancellation, and no partial cache writes. Uses fixture text and a fake key, never a real provider.
 - Real native-window review using the debug-only isolated preview: popup, settings navigation, API page, prompt sheet, collapse/expand; rendered light/dark and welcome artifacts.
 - `CREATE_DMG=0 ./scripts/build-app.sh` creates `dist/Digger.app`.
+- CI also creates a DMG using `hdiutil` without Finder automation. Signing and optional app notarization happen before the app enters the image. `scripts/verify-dmg.sh` verifies the checksum, mounts the image read-only, checks the contained app signature and confirms the Applications shortcut before upload.
 
 The available machine has no valid Apple signing identity. The local build can be ad-hoc signed, but it is not notarized. A stable Apple signing identity remains necessary to avoid Accessibility identity changes across rebuilds. Full selection/shortcut behavior in third-party apps still depends on granting this build Accessibility access; no new system permission was granted during automated validation.
 

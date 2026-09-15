@@ -68,7 +68,14 @@ The app is written to `dist/Digger.app`. For a debuggable app bundle, use `BUILD
 
 The transport test starts a temporary loopback-only API with fixture text and a fake key. It validates streaming, cache, errors, request payloads and cancellation without contacting a provider.
 
-GitHub Actions runs on pull requests and pushes to `main`: macOS 15 with Xcode 26.2 builds Debug, runs the local fixture tests, and packages and verifies a Release app. Each successful run uploads `Digger-macOS.zip` for seven days. The app is ad-hoc signed for local use, not notarized; CI needs no API key or signing certificate and does not generate a DMG.
+GitHub Actions runs on pull requests and pushes to `main`: macOS 15 with Xcode 26.2 builds Debug, runs the local fixture tests, and packages a Release app into a DMG. CI verifies the image checksum, mounts it read-only, and checks the bundled app's signature and Applications shortcut. Each successful run uploads the installer as `Digger-DMG` for seven days. The app is ad-hoc signed for local use, not notarized; CI needs no API key or signing certificate.
+
+To create the same DMG locally without Finder automation:
+
+```sh
+CREATE_DMG=1 USE_CREATE_DMG=0 CONFIGURE_DMG=0 GENERATE_DMG_BG=0 ./scripts/build-app.sh
+./scripts/verify-dmg.sh dist/Digger-*.dmg
+```
 
 Review the UI offline in a debug build:
 
