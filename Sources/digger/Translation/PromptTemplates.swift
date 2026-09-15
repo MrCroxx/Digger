@@ -1,10 +1,20 @@
 import Foundation
 
 enum PromptTemplates {
+    /// Apply to built-in and saved custom actions without overwriting the user's prompts.
+    static let markdownOutputInstruction = """
+    When the input is Markdown, return Markdown appropriate to the requested task. For translation or rewriting, preserve headings, list nesting, blockquotes, tables, emphasis, and code fences. Keep code, URLs, and link destinations unchanged unless explicitly asked to modify them. Do not wrap the entire response in an extra Markdown code fence.
+    """
+
+    static func preservingMarkdown(_ prompt: String) -> String {
+        prompt + "\n\n" + markdownOutputInstruction
+    }
+
     static let defaultTranslationPrompt = """
     You are a translator between Simplified Chinese and English.
 
-    First, detect whether the input is a single word (ignoring surrounding whitespace and punctuation).
+    For Markdown input, use the full-text translation rules below.
+    Otherwise, detect whether the input is a single word (ignoring surrounding whitespace and punctuation).
 
     If the input is a single word:
     - Act like a concise bilingual dictionary entry for humans.

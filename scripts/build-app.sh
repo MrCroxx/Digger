@@ -8,7 +8,12 @@ if [[ -f "$CONFIG_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$CONFIG_FILE"
 fi
-BUILD_DIR="$ROOT_DIR/.build/release"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
+if [[ "$BUILD_CONFIGURATION" != "debug" && "$BUILD_CONFIGURATION" != "release" ]]; then
+  echo "BUILD_CONFIGURATION must be debug or release"
+  exit 1
+fi
+BUILD_DIR="$ROOT_DIR/.build/$BUILD_CONFIGURATION"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
 APP_NAME="${APP_NAME:-Digger}"
@@ -32,11 +37,11 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 
-echo "Building release binary..."
-swift build -c release
+echo "Building $BUILD_CONFIGURATION binary..."
+swift build -c "$BUILD_CONFIGURATION"
 
 if [[ ! -f "$BUILD_DIR/digger" ]]; then
-  echo "Release binary not found at $BUILD_DIR/digger"
+  echo "Binary not found at $BUILD_DIR/digger"
   exit 1
 fi
 
@@ -45,13 +50,6 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 cp "$BUILD_DIR/digger" "$MACOS_DIR/$APP_NAME"
-
-echo "Embedding frameworks..."
-for framework in "$BUILD_DIR"/*.framework; do
-  if [[ -e "$framework" ]]; then
-    cp -R "$framework" "$FRAMEWORKS_DIR"
-  fi
-done
 
 if command -v install_name_tool >/dev/null; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME" || true
@@ -253,7 +251,9 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
   codesign --verify --strict --verbose=2 "$APP_DIR"
   echo "Signing complete"
 else
-  echo "SIGN_IDENTITY not set; app bundle is unsigned"
+  echo "No Apple signing identity configured; signing for local use only"
+  codesign --force --sign - "$APP_DIR"
+  codesign --verify --strict "$APP_DIR"
 fi
 
 if [[ "$NOTARIZE" == "1" ]]; then

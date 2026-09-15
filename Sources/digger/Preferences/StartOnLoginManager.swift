@@ -11,6 +11,9 @@ enum StartOnLoginManager {
     }
 
     static func apply(enabled: Bool) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { return }
+        #endif
         guard #available(macOS 13.0, *) else {
             return
         }

@@ -6,7 +6,6 @@ struct PreferencesView: View {
         case general
         case popup
         case functions
-        case advanced
         case api
         case cache
 
@@ -20,8 +19,6 @@ struct PreferencesView: View {
                 return UIStrings.Preferences.tabPopup
             case .functions:
                 return UIStrings.Preferences.tabFunctions
-            case .advanced:
-                return UIStrings.Preferences.tabAdvanced
             case .api:
                 return UIStrings.Preferences.tabAPI
             case .cache:
@@ -37,8 +34,6 @@ struct PreferencesView: View {
                 return "rectangle.on.rectangle"
             case .functions:
                 return "function"
-            case .advanced:
-                return "slider.horizontal.3"
             case .api:
                 return "key"
             case .cache:
@@ -53,9 +48,6 @@ struct PreferencesView: View {
         case popupMaxHeight
         case translationCacheMaxSizeGiB
         case translationCacheTTLHours
-        case pressureThreshold
-        case pressureDelta
-        case baselineWindow
     }
 
     private enum PromptEditorTarget: Identifiable, Equatable {
@@ -77,7 +69,6 @@ struct PreferencesView: View {
     let onPopupOpacityChange: (CGFloat) -> Void
     let onPopupLayoutChange: () -> Void
     let onLanguageChange: () -> Void
-    let onForceClickSettingsChange: (Float, Float, TimeInterval) -> Void
     let onCustomFunctionsChange: () -> Void
 
     @State private var selection: PreferencesTab? = .general
@@ -87,28 +78,40 @@ struct PreferencesView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                List(PreferencesTab.allCases, selection: $selection) { tab in
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .tag(tab)
+            VStack(alignment: .leading, spacing: 26) {
+                HStack(spacing: 10) {
+                    BrandMark()
+                    Text("Digger").font(.system(size: 27, weight: .medium, design: .serif))
+                }.padding(.top, 16)
+                VStack(spacing: 5) {
+                    ForEach(PreferencesTab.allCases) { tab in
+                        Button {
+                            if let focusedField { applyField(focusedField) }
+                            focusedField = nil
+                            selection = tab
+                        } label: {
+                            HStack(spacing: 11) {
+                                Image(systemName: tab.systemImage).frame(width: 18)
+                                Text(tab.title)
+                                Spacer()
+                            }
+                            .font(.system(size: 13, weight: selection == tab ? .semibold : .regular))
+                            .padding(.horizontal, 12).padding(.vertical, 11)
+                            .foregroundStyle(selection == tab ? DiggerTheme.accent : DiggerTheme.muted)
+                            .background(selection == tab ? DiggerTheme.soft : .clear, in: RoundedRectangle(cornerRadius: 9))
+                            .contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
                 }
-                .listStyle(.sidebar)
-                .applySidebarListBackground()
-                Text(UIStrings.Preferences.description)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-            }
-            .frame(width: 220)
-            .background(Color(nsColor: .windowBackgroundColor))
-            Divider()
+                Spacer()
+            }.padding(.horizontal, 18).frame(width: 206).background(DiggerTheme.sidebar)
+            Rectangle().fill(DiggerTheme.line).frame(width: 1)
             detailView
-                .frame(minWidth: 560, maxWidth: .infinity)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .frame(minWidth: 800, minHeight: 460)
+        .foregroundStyle(DiggerTheme.ink).tint(DiggerTheme.accent)
+        .frame(minWidth: 880, minHeight: 580)
+        .onSubmit { if let focusedField { applyField(focusedField) } }
+        .onDisappear { if let focusedField { applyField(focusedField) } }
         .onChange(of: focusedField) { newValue in
             if let lastFocusedField, lastFocusedField != newValue {
                 applyField(lastFocusedField)
@@ -145,19 +148,20 @@ struct PreferencesView: View {
             AppPreferences.setPopupOpacity(CGFloat(clamped))
             onPopupOpacityChange(CGFloat(clamped))
         }
-        .onChange(of: viewModel.forceClickPopupEnabled) { newValue in
-            AppPreferences.setForceClickPopupEnabled(newValue)
-        }
         .onChange(of: viewModel.apiKey) { newValue in
+            if !isApiTestRunning { viewModel.apiTestState = .idle }
             AppPreferences.setApiKey(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         .onChange(of: viewModel.endpoint) { newValue in
+            if !isApiTestRunning { viewModel.apiTestState = .idle }
             AppPreferences.setEndpoint(newValue)
         }
         .onChange(of: viewModel.model) { newValue in
+            if !isApiTestRunning { viewModel.apiTestState = .idle }
             AppPreferences.setModel(newValue)
         }
         .onChange(of: viewModel.thinkEffort) { newValue in
+            if !isApiTestRunning { viewModel.apiTestState = .idle }
             AppPreferences.setThinkEffort(newValue)
         }
         .onChange(of: viewModel.systemPrompt) { newValue in
@@ -171,8 +175,8 @@ struct PreferencesView: View {
                 viewModel.selectedFunctionID = newValue.first?.id
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            promptEditorTarget = nil
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in
+            if let focusedField { applyField(focusedField) }
         }
         .sheet(item: $promptEditorTarget) { target in
             PromptEditorSheet(
@@ -184,37 +188,44 @@ struct PreferencesView: View {
     }
 
     private var detailView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text((selection ?? .general).title)
-                .font(.system(size: 18, weight: .semibold))
-            Divider()
-                .padding(.vertical, 6)
-            Group {
-                switch selection ?? .general {
-                case .general:
-                    generalPane
-                case .popup:
-                    popupPane
-                case .functions:
-                    functionsPane
-                case .advanced:
-                    advancedPane
-                case .api:
-                    apiPane
-                case .cache:
-                    cachePane
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text((selection ?? .general).title)
+                    .font(.system(size: 30, weight: .medium, design: .serif))
+                    .padding(.top, 16)
+                if selection == .popup { appearancePreview }
+                Surface {
+                    switch selection ?? .general {
+                    case .general: generalPane
+                    case .popup: popupPane
+                    case .functions: functionsPane
+                    case .api: apiPane
+                    case .cache: cachePane
+                    }
                 }
+                Label(localized("Changes are saved automatically", "更改会自动保存", "変更は自動保存されます"), systemImage: "checkmark.circle")
+                    .font(.system(size: 11)).foregroundStyle(DiggerTheme.muted)
+            }.padding(32).frame(maxWidth: 840, alignment: .leading).frame(maxWidth: .infinity)
+        }.background(DiggerTheme.canvas)
+    }
+
+    private var appearancePreview: some View {
+        Surface {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    Label(localized("Preview", "效果预览", "プレビュー"), systemImage: "sparkle")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(DiggerTheme.accent)
+                    Spacer()
+                    Text("Digger").font(.system(size: 16, design: .serif))
+                }
+                Text(localized("Sample text · Aa 123", "示例文字 · Aa 123", "サンプルテキスト · Aa 123"))
+                    .font(.system(size: viewModel.popupFontSize)).textSelection(.enabled)
             }
-            .padding(.top, 16)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
-        .background(Color(nsColor: .windowBackgroundColor))
+        }.opacity(viewModel.popupOpacity / 100)
     }
 
     private var generalPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             LabeledContent {
                 Picker("", selection: languageBinding) {
                     ForEach(AppLanguage.allCases, id: \.self) { language in
@@ -250,7 +261,7 @@ struct PreferencesView: View {
     }
 
     private var popupPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             LabeledContent {
                 HStack(spacing: 12) {
                     Slider(
@@ -280,14 +291,6 @@ struct PreferencesView: View {
                 preferenceLabel(UIStrings.Preferences.popupOpacityLabel)
             }
             LabeledContent {
-                TextField("", text: $viewModel.popupTooltipDelayText)
-                    .preferenceInputStyle()
-                    .frame(width: 160)
-                    .focused($focusedField, equals: .popupTooltipDelay)
-            } label: {
-                preferenceLabel(UIStrings.Preferences.popupTooltipDelayLabel)
-            }
-            LabeledContent {
                 ShortcutRecorderView(
                     shortcut: $viewModel.popupShortcut,
                     placeholder: UIStrings.Preferences.popupShortcutPlaceholder
@@ -305,7 +308,7 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxWidth)
             } label: {
-                preferenceLabel("POPUP_MAX_WIDTH")
+                preferenceLabel(localized("Window width (pt)", "窗口宽度（点）", "ウィンドウの幅（pt）"))
             }
             LabeledContent {
                 TextField("", text: $viewModel.popupMaxHeightText)
@@ -313,7 +316,7 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxHeight)
             } label: {
-                preferenceLabel("POPUP_MAX_HEIGHT")
+                preferenceLabel(localized("Window height (pt)", "窗口高度（点）", "ウィンドウの高さ（pt）"))
             }
         }
     }
@@ -340,7 +343,7 @@ struct PreferencesView: View {
                 .buttonStyle(.plain)
                 .preferenceInputContainerStyle()
             }
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     Text(UIStrings.Preferences.customFunctionsTitle)
                         .font(.system(size: 13, weight: .semibold))
@@ -357,6 +360,10 @@ struct PreferencesView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 12) {
+                    Text(localized("Enabled", "启用", "有効"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48)
                     Text(UIStrings.Preferences.functionTitleLabel)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -367,10 +374,22 @@ struct PreferencesView: View {
                     Color.clear
                         .frame(width: 24, height: 1)
                 }
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                Group {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(viewModel.customFunctions, id: \.id) { function in
                             HStack(spacing: 12) {
+                                Toggle(localized("Enable \(function.title)", "启用 \(function.title)", "\(function.title) を有効にする"),
+                                       isOn: Binding(
+                                        get: { viewModel.customFunctions.first(where: { $0.id == function.id })?.isEnabled ?? false },
+                                        set: { enabled in
+                                            guard let index = viewModel.customFunctions.firstIndex(where: { $0.id == function.id }) else { return }
+                                            viewModel.customFunctions[index].isEnabled = enabled
+                                        }
+                                       ))
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                                    .labelsHidden()
+                                    .frame(width: 48)
                                 TextField(
                                     UIStrings.Preferences.functionTitlePlaceholder,
                                     text: binding(for: function.id, keyPath: \.title)
@@ -383,7 +402,7 @@ struct PreferencesView: View {
                                 } label: {
                                     Text(previewTextOrPlaceholder(for: function.prompt, placeholder: UIStrings.Preferences.functionPromptPlaceholder))
                                         .foregroundStyle(function.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
-                                        .lineLimit(1)
+                                        .lineLimit(3)
                                         .truncationMode(.tail)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
@@ -395,7 +414,7 @@ struct PreferencesView: View {
                                 Button {
                                     removeFunction(function.id)
                                 } label: {
-                                    Image(systemName: "minus")
+                                    Image(systemName: "trash")
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
@@ -406,7 +425,7 @@ struct PreferencesView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(minHeight: 180)
+                .frame(minHeight: 80)
                 HStack {
                     Button(UIStrings.Preferences.restorePromptsLabel) {
                         restorePrompts()
@@ -419,40 +438,8 @@ struct PreferencesView: View {
         }
     }
 
-    private var advancedPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle(isOn: $viewModel.forceClickPopupEnabled) {
-                preferenceLabel(UIStrings.Preferences.forceClickPopupEnabledLabel)
-            }
-            LabeledContent {
-                TextField("", text: $viewModel.pressureThresholdText)
-                    .preferenceInputStyle()
-                    .frame(width: 160)
-                    .focused($focusedField, equals: .pressureThreshold)
-            } label: {
-                preferenceLongLabel("FORCE_CLICK_PRESSURE_THRESHOLD")
-            }
-            LabeledContent {
-                TextField("", text: $viewModel.pressureDeltaText)
-                    .preferenceInputStyle()
-                    .frame(width: 160)
-                    .focused($focusedField, equals: .pressureDelta)
-            } label: {
-                preferenceLongLabel("FORCE_CLICK_PRESSURE_DELTA")
-            }
-            LabeledContent {
-                TextField("", text: $viewModel.baselineWindowText)
-                    .preferenceInputStyle()
-                    .frame(width: 160)
-                    .focused($focusedField, equals: .baselineWindow)
-            } label: {
-                preferenceLongLabel("FORCE_CLICK_BASELINE_WINDOW_MS")
-            }
-        }
-    }
-
     private var apiPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             LabeledContent {
                 TextField(
                     "",
@@ -461,35 +448,35 @@ struct PreferencesView: View {
                         .foregroundColor(.secondary)
                 )
                     .preferenceInputStyle()
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
             } label: {
-                preferenceLabel("OPENAI_ENDPOINT")
+                preferenceLabel(localized("API endpoint", "API 地址", "API エンドポイント"))
             }
             LabeledContent {
                 SecureField("", text: $viewModel.apiKey)
                     .preferenceInputStyle()
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
             } label: {
-                preferenceLabel("OPENAI_API_KEY")
+                preferenceLabel(localized("API key", "API 密钥", "API キー"))
             }
             LabeledContent {
                 TextField("", text: $viewModel.model)
                     .preferenceInputStyle()
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
             } label: {
-                preferenceLabel("OPENAI_MODEL")
+                preferenceLabel(localized("Model", "模型", "モデル"))
             }
             LabeledContent {
                 Picker("", selection: $viewModel.thinkEffort) {
                     Text(UIStrings.Preferences.thinkEffortDefault).tag("")
-                    ForEach(["none", "minimal", "low", "medium", "high"], id: \.self) { effort in
+                    ForEach(Array(Set(["none", "minimal", "low", "medium", "high", "xhigh", viewModel.thinkEffort].filter { !$0.isEmpty })).sorted(), id: \.self) { effort in
                         Text(effort).tag(effort)
                     }
                 }
                     .labelsHidden()
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
             } label: {
-                preferenceLabel("THINK_EFFORT")
+                preferenceLabel(localized("Reasoning effort", "推理强度", "推論の強度"))
             }
             HStack(spacing: 12) {
                 Button(UIStrings.Preferences.apiTestLabel) {
@@ -513,7 +500,7 @@ struct PreferencesView: View {
     }
 
     private var cachePane: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             LabeledContent {
                 TextField("", text: $viewModel.translationCacheMaxSizeGiBText)
                     .preferenceInputStyle()
@@ -562,7 +549,7 @@ struct PreferencesView: View {
     private var apiTestMessageColor: Color {
         switch viewModel.apiTestState {
         case .success:
-            return .green
+            return DiggerTheme.accent
         case .failure:
             return .red
         case .testing, .idle:
@@ -622,17 +609,11 @@ struct PreferencesView: View {
             applyTranslationCacheMaxSizeGiB()
         case .translationCacheTTLHours:
             applyTranslationCacheTTLHours()
-        case .pressureThreshold:
-            applyPressureThreshold()
-        case .pressureDelta:
-            applyPressureDelta()
-        case .baselineWindow:
-            applyBaselineWindow()
         }
     }
 
     private func applyPopupTooltipDelay() {
-        guard let value = Double(viewModel.popupTooltipDelayText) else {
+        guard let value = Double(viewModel.popupTooltipDelayText), value.isFinite else {
             viewModel.popupTooltipDelayText = String(format: "%.0f", AppPreferences.popupTooltipDelayMs())
             return
         }
@@ -641,7 +622,7 @@ struct PreferencesView: View {
     }
 
     private func applyPopupMaxWidth() {
-        guard let value = Double(viewModel.popupMaxWidthText) else {
+        guard let value = Double(viewModel.popupMaxWidthText), value.isFinite else {
             viewModel.popupMaxWidthText = String(format: "%.0f", AppPreferences.popupMaxWidth())
             return
         }
@@ -651,7 +632,7 @@ struct PreferencesView: View {
     }
 
     private func applyPopupMaxHeight() {
-        guard let value = Double(viewModel.popupMaxHeightText) else {
+        guard let value = Double(viewModel.popupMaxHeightText), value.isFinite else {
             viewModel.popupMaxHeightText = String(format: "%.0f", AppPreferences.popupMaxHeight())
             return
         }
@@ -661,7 +642,7 @@ struct PreferencesView: View {
     }
 
     private func applyTranslationCacheMaxSizeGiB() {
-        guard let value = Double(viewModel.translationCacheMaxSizeGiBText) else {
+        guard let value = Double(viewModel.translationCacheMaxSizeGiBText), value.isFinite else {
             viewModel.translationCacheMaxSizeGiBText = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
             return
         }
@@ -673,7 +654,7 @@ struct PreferencesView: View {
     }
 
     private func applyTranslationCacheTTLHours() {
-        guard let value = Double(viewModel.translationCacheTTLHoursText) else {
+        guard let value = Double(viewModel.translationCacheTTLHoursText), value.isFinite else {
             viewModel.translationCacheTTLHoursText = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
             return
         }
@@ -691,44 +672,6 @@ struct PreferencesView: View {
                 NSWorkspace.shared.open(directoryURL)
             }
         }
-    }
-
-    private func applyPressureThreshold() {
-        guard let value = Double(viewModel.pressureThresholdText) else {
-            viewModel.pressureThresholdText = String(format: "%.2f", AppPreferences.pressureThreshold())
-            return
-        }
-        AppPreferences.setPressureThreshold(CGFloat(value))
-        viewModel.pressureThresholdText = String(format: "%.2f", AppPreferences.pressureThreshold())
-        notifyForceClickSettingsChange()
-    }
-
-    private func applyPressureDelta() {
-        guard let value = Double(viewModel.pressureDeltaText) else {
-            viewModel.pressureDeltaText = String(format: "%.2f", AppPreferences.pressureDelta())
-            return
-        }
-        AppPreferences.setPressureDelta(CGFloat(value))
-        viewModel.pressureDeltaText = String(format: "%.2f", AppPreferences.pressureDelta())
-        notifyForceClickSettingsChange()
-    }
-
-    private func applyBaselineWindow() {
-        guard let value = Double(viewModel.baselineWindowText) else {
-            viewModel.baselineWindowText = String(format: "%.0f", AppPreferences.baselineWindowMs())
-            return
-        }
-        AppPreferences.setBaselineWindowMs(CGFloat(value))
-        viewModel.baselineWindowText = String(format: "%.0f", AppPreferences.baselineWindowMs())
-        notifyForceClickSettingsChange()
-    }
-
-    private func notifyForceClickSettingsChange() {
-        onForceClickSettingsChange(
-            Float(AppPreferences.pressureThreshold()),
-            Float(AppPreferences.pressureDelta()),
-            TimeInterval(AppPreferences.baselineWindowMs() / 1000)
-        )
     }
 
     private func openPromptEditor(_ target: PromptEditorTarget) {
@@ -821,14 +764,14 @@ private struct PromptEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 20) {
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
             MultilinePromptEditor(placeholder: placeholder, text: $text)
                 .frame(minHeight: 220, maxHeight: 360)
             HStack {
                 Spacer()
-                Button("Done") {
+                Button(localized("Done", "完成", "完了")) {
                     dismiss()
                 }
                 .buttonStyle(.bordered)
@@ -836,8 +779,9 @@ private struct PromptEditorSheet: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(16)
-        .frame(minWidth: 560)
+        .padding(24)
+        .background(DiggerTheme.canvas).tint(DiggerTheme.accent)
+        .frame(minWidth: 640, minHeight: 380)
     }
 }
 
@@ -882,13 +826,13 @@ private extension View {
 
     func preferenceInputContainerStyle() -> some View {
         self
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(Color(nsColor: .textBackgroundColor))
+            .padding(.vertical, 9)
+            .padding(.horizontal, 10)
+            .background(DiggerTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(nsColor: .separatorColor))
+                    .stroke(DiggerTheme.line)
             )
     }
 
@@ -917,7 +861,7 @@ private extension View {
 private func preferenceLabel(_ text: String) -> some View {
     Text(text)
         .lineLimit(1)
-        .frame(width: 220, alignment: .leading)
+        .frame(width: 175, alignment: .leading)
 }
 
 private func preferenceLongLabel(_ text: String) -> some View {

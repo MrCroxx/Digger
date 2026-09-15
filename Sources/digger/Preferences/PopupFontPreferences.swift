@@ -3,12 +3,12 @@ import Foundation
 
 enum PopupFontPreferences {
     static let key = "PopupFontSize"
-    static let defaultSize: CGFloat = 12
+    static let defaultSize: CGFloat = 14
     static let minSize: CGFloat = 10
     static let maxSize: CGFloat = 20
 
     static func load() -> CGFloat {
-        let stored = UserDefaults.standard.double(forKey: key)
+        let stored = AppPreferences.defaults.double(forKey: key)
         if stored <= 0 {
             return defaultSize
         }
@@ -16,7 +16,7 @@ enum PopupFontPreferences {
     }
 
     static func save(_ size: CGFloat) {
-        UserDefaults.standard.set(Double(clamp(size)), forKey: key)
+        AppPreferences.defaults.set(Double(clamp(size)), forKey: key)
     }
 
     static func clamp(_ size: CGFloat) -> CGFloat {

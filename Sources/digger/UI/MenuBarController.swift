@@ -1,7 +1,9 @@
 import AppKit
 
 @MainActor
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSMenuDelegate {
+    var shortcutStatus: (() -> String)?
+    private let shortcutStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let statusItem: NSStatusItem
     private let preferencesController: PreferencesWindowController
     private let welcomeController: WelcomeWindowController
@@ -42,6 +44,9 @@ final class MenuBarController: NSObject {
             button.toolTip = UIStrings.Menu.appTitle
         }
 
+        menu.delegate = self
+        menu.addItem(shortcutStatusItem)
+        menu.addItem(.separator())
         preferencesItem.target = self
         openWelcomeItem.target = self
         menu.addItem(openWelcomeItem)
@@ -52,6 +57,10 @@ final class MenuBarController: NSObject {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        shortcutStatusItem.title = shortcutStatus?() ?? localized("Offline preview", "离线预览", "オフラインプレビュー")
     }
 
     func refreshStrings() {

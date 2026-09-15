@@ -1,58 +1,51 @@
 import AppKit
 import Foundation
-import OpenMultitouchSupport
 
 @main
 struct Digger {
     static func main() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") {
+            PreviewMode.run()
+            return
+        }
+        #endif
         StartOnLoginManager.refreshPreference()
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let mainMenuController = MainMenuController()
         app.mainMenu = mainMenuController.buildMainMenu()
-        let manager = OMSManager.shared
-        let threshold = Float(AppPreferences.pressureThreshold())
-        let delta = Float(AppPreferences.pressureDelta())
-        let windowMs = Double(AppPreferences.baselineWindowMs())
-        let selectionHandler = ForceClickSelectionHandler()
-        let monitor = ForceClickMonitor(
-            pressureThreshold: threshold,
-            pressureDelta: delta,
-            baselineWindow: windowMs / 1000,
-            onForceClick: {
-                Task {
-                    await selectionHandler.handleForceClick(source: .forceClick)
-                }
-            }
-        )
-        let eventTap = ForceClickEventTap(monitor: monitor, selectionHandler: selectionHandler)
+        let selectionHandler = SelectionHandler()
+        let eventTap = GlobalShortcutMonitor(selectionHandler: selectionHandler)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--diagnose") {
+            eventTap.start()
+            print("[Digger] \(eventTap.statusDescription)")
+            print("[Digger] Executable: \(Bundle.main.executablePath ?? CommandLine.arguments[0])")
+            eventTap.stop()
+            return
+        }
+        #endif
         weak var menuBarController: MenuBarController?
         let preferencesController = PreferencesWindowController(
             onPopupFontSizeChange: { newSize in
-                forceClickSelectionPopup.applyPopupTextSize(newSize)
+                selectionPopup.applyPopupTextSize(newSize)
             },
             onPopupOpacityChange: { newOpacity in
-                forceClickSelectionPopup.applyPopupOpacity(newOpacity)
+                selectionPopup.applyPopupOpacity(newOpacity)
             },
             onPopupLayoutChange: {
-                forceClickSelectionPopup.refreshLayout()
+                selectionPopup.refreshLayout()
             },
             onLanguageChange: {
-                forceClickSelectionPopup.applyStrings()
-                forceClickSelectionPopup.refreshLayout()
+                selectionPopup.applyStrings()
+                selectionPopup.refreshLayout()
                 menuBarController?.refreshStrings()
                 mainMenuController.applyStrings()
             },
-            onForceClickSettingsChange: { newThreshold, newDelta, newWindow in
-                monitor.updateSettings(
-                    pressureThreshold: newThreshold,
-                    pressureDelta: newDelta,
-                    baselineWindow: newWindow
-                )
-            },
             onCustomFunctionsChange: {}
         )
-        forceClickSelectionPopup.onOpenPreferences = {
+        selectionPopup.onOpenPreferences = {
             preferencesController.show()
         }
         let welcomeController = WelcomeWindowController()
@@ -62,35 +55,10 @@ struct Digger {
         let menuController = MenuBarController(preferencesController: preferencesController, welcomeController: welcomeController)
         menuBarController = menuController
 
-        Task {
-            for await touches in manager.touchDataStream {
-                monitor.update(touches: touches)
-            }
-        }
-
-        if !manager.startListening() {
-            print("Failed to start OpenMultitouchSupport listener.")
-        }
-
-        var eventTapStarted = false
-        let startEventTapIfNeeded = {
-            guard !eventTapStarted else {
-                return
-            }
-            guard !PermissionChecker.needsAttention() else {
-                return
-            }
-            if !eventTap.start() {
-                print("Failed to register event tap. Enable Accessibility permissions.")
-            } else {
-                print("Force click monitor started.")
-                eventTapStarted = true
-            }
-        }
-        welcomeController.onReady = {
-            startEventTapIfNeeded()
-        }
-        startEventTapIfNeeded()
+        menuController.shortcutStatus = { eventTap.statusDescription }
+        // Register the hotkey even before Accessibility is granted, so it can explain what is missing.
+        eventTap.start()
+        welcomeController.onReady = { eventTap.start() }
 
         let firstLaunch = !AppPreferences.hasLaunchedBefore()
         AppPreferences.setHasLaunchedBefore(true)

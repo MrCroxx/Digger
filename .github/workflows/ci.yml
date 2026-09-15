@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build, tests and app bundle
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      # The runner's default Xcode 16 cannot build this Swift 6.2 package.
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check source and toolchain
+        run: |
+          git diff --check HEAD^ HEAD
+          xcodebuild -version
+          swift --version
+
+      - name: Build debug executable
+        run: swift build --configuration debug
+
+      - name: Run tests with local API fixture
+        run: /usr/bin/python3 scripts/test-transport.py
+
+      - name: Build release app without a DMG
+        env:
+          BUILD_CONFIGURATION: release
+          CREATE_DMG: '0'
+          SIGN_IDENTITY: ''
+          NOTARIZE: '0'
+        run: ./scripts/build-app.sh
+
+      - name: Verify and archive local-use app
+        run: |
+          plutil -lint dist/Digger.app/Contents/Info.plist
+          codesign --verify --strict --verbose=2 dist/Digger.app
+          ditto -c -k --sequesterRsrc --keepParent dist/Digger.app dist/Digger-macOS.zip
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Digger-macOS
+          path: dist/Digger-macOS.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -16,10 +16,6 @@ final class PreferencesViewModel: ObservableObject {
     @Published var thinkEffort: String = AppPreferences.thinkEffort()
     @Published var translationCacheMaxSizeGiBText: String = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
     @Published var translationCacheTTLHoursText: String = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
-    @Published var pressureThresholdText: String = String(format: "%.2f", AppPreferences.pressureThreshold())
-    @Published var pressureDeltaText: String = String(format: "%.2f", AppPreferences.pressureDelta())
-    @Published var baselineWindowText: String = String(format: "%.0f", AppPreferences.baselineWindowMs())
-    @Published var forceClickPopupEnabled: Bool = AppPreferences.forceClickPopupEnabled()
     @Published var customFunctions: [CustomFunction] = AppPreferences.customFunctions()
     @Published var systemPrompt: String = AppPreferences.systemPrompt()
     @Published var startOnLogin: Bool = AppPreferences.startOnLoginEnabled()
@@ -41,10 +37,6 @@ final class PreferencesViewModel: ObservableObject {
         thinkEffort = AppPreferences.thinkEffort()
         translationCacheMaxSizeGiBText = String(format: "%.2f", AppPreferences.translationCacheMaxSizeGiB())
         translationCacheTTLHoursText = String(format: "%.2f", AppPreferences.translationCacheTTLHours())
-        pressureThresholdText = String(format: "%.2f", AppPreferences.pressureThreshold())
-        pressureDeltaText = String(format: "%.2f", AppPreferences.pressureDelta())
-        baselineWindowText = String(format: "%.0f", AppPreferences.baselineWindowMs())
-        forceClickPopupEnabled = AppPreferences.forceClickPopupEnabled()
         customFunctions = AppPreferences.customFunctions()
         systemPrompt = AppPreferences.systemPrompt()
         startOnLogin = AppPreferences.startOnLoginEnabled()
@@ -67,15 +59,22 @@ final class PreferencesViewModel: ObservableObject {
         }
 
         apiTestState = .testing
+        let testedEndpoint = endpoint, testedModel = model, testedEffort = thinkEffort, testedKey = apiKey
         do {
-            _ = try await OpenAITranslator.testConnection(
+            let output = try await OpenAITranslator.testConnection(
                 apiKey: apiKeyText,
                 endpoint: AppPreferences.resolvedEndpoint(endpoint),
                 model: modelText,
                 thinkEffort: thinkEffort
             )
-            apiTestState = .success(UIStrings.Preferences.apiTestSuccess)
+            guard apiKey == testedKey, endpoint == testedEndpoint, model == testedModel, thinkEffort == testedEffort else {
+                apiTestState = .idle; return
+            }
+            apiTestState = output.isEmpty ? .failure(UIStrings.Popup.emptyResult) : .success(UIStrings.Preferences.apiTestSuccess)
         } catch {
+            guard apiKey == testedKey, endpoint == testedEndpoint, model == testedModel, thinkEffort == testedEffort else {
+                apiTestState = .idle; return
+            }
             let message = UIStrings.Preferences.apiTestFailedPrefix + " " + error.localizedDescription
             apiTestState = .failure(message)
         }
