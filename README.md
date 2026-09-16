@@ -13,7 +13,7 @@ Select text in another app and press **⌘E**. Digger runs enabled prompts in pa
 
 The interface is built with **SwiftUI + AppKit**, with warm paper surfaces, brown accents, and automatic light/dark appearance. See the [redesign decision and validation notes](docs/native-redesign.md).
 
-The app icon uses a cream serif `d` on a walnut brown tile. Run `swift scripts/app-icon.swift` to regenerate its PNG and all macOS icon sizes.
+The app icon uses a cream serif `d` on a walnut brown tile. The menu bar uses a monochrome template of the same serif `d` and rounded tile, adapting to light and dark menu bars. Run `swift scripts/app-icon.swift` to regenerate its PNG and all macOS icon sizes.
 
 - **Works where you read** — reads selections through macOS Accessibility; browser HTML is converted locally to Markdown to retain lists and links. Temporary clipboard copies restore the previous clipboard.
 - **Your prompts, in parallel** — translation starts enabled and summary disabled; enable, disable, add, edit or remove custom actions and edit a shared system prompt.
@@ -98,6 +98,7 @@ Review the UI offline in a debug build:
 swift run digger --preview
 swift run digger --preview --settings
 swift run digger --preview --welcome --dark
+python3 scripts/test-popup-layout.py
 ```
 
 If a shortcut does not open the popup, stop Digger with `Ctrl+C` and check the current registration from the same terminal:

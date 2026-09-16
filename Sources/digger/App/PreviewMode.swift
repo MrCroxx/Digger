@@ -61,7 +61,8 @@ enum PreviewMode {
             let htmlPath = htmlPathIndex.flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
             let html = htmlPath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
             let htmlMarkdown = html.flatMap(HTMLSelectionMarkdown.convert)
-            let fixture = htmlMarkdown ?? Self.markdownFixture
+            let fixture = htmlMarkdown ?? (args.contains("--verify-stream-layout")
+                ? PreviewStreamLayout.fixture : Self.markdownFixture)
             let markdownPreview = htmlMarkdown != nil || args.contains("--markdown") || args.contains("--markdown-stream")
             selectionPopup.showLoading(original: markdownPreview ? fixture : "Good design is as little design as possible. Less, but better — because it concentrates on the essential aspects.",
                                        near: anchor, requestID: id, functions: markdownPreview ? Array(functions.prefix(1)) : functions)
@@ -73,14 +74,30 @@ enum PreviewMode {
                         let frame = window?.frame
                         let characters = Array(fixture)
                         for end in stride(from: 8, to: characters.count + 8, by: 8) {
-                            try? await Task.sleep(for: .milliseconds(50))
                             guard selectionPopup.model.requestID == id else { return }
                             let count = min(end, characters.count)
                             selectionPopup.updateResult(String(characters.prefix(count)), for: id, functionID: functions[0].id,
                                 near: anchor, isFinal: count == characters.count, isCacheHit: false)
-                            assert(window?.frame == frame, "Streaming changed the popup frame")
+                            // Let SwiftUI commit each snapshot before inspecting geometry.
+                            for _ in 0..<5 {
+                                try? await Task.sleep(for: .milliseconds(10))
+                                assert(window?.frame == frame, "Streaming changed the popup frame")
+                                if args.contains("--verify-stream-layout"), let window {
+                                    PreviewStreamLayout.verify(window)
+                                }
+                            }
                         }
-                        print("[Digger preview] Markdown stream complete; window frame remained stable.")
+                        if args.contains("--verify-stream-layout"), let window {
+                            PreviewStreamLayout.verifyScrolling(window)
+                            // User resizing must still update the reading width.
+                            window.setContentSize(NSSize(width: 440, height: 320))
+                            try? await Task.sleep(for: .milliseconds(150))
+                            PreviewStreamLayout.verify(window)
+                            print("[Digger preview] Stream layout, scrolling and resizing passed.")
+                            if !args.contains("--render") { app.terminate(nil) }
+                        } else {
+                            print("[Digger preview] Markdown stream complete; window frame remained stable.")
+                        }
                     }
                 } else {
                     selectionPopup.updateResult(fixture, for: id, functionID: functions[0].id, near: anchor, isFinal: true, isCacheHit: false)
@@ -112,7 +129,7 @@ enum PreviewMode {
                 let delay = delayIndex.flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil } ?? 1
                 try? await Task.sleep(for: .seconds(min(max(delay, 0.1), 30)))
                 if args.contains("--scrollbars") {
-                    func revealScrollers(in view: NSView) {
+                    @MainActor func revealScrollers(in view: NSView) {
                         if let scroll = view as? NSScrollView {
                             assert(scroll.scrollerStyle == .overlay)
                             scroll.flashScrollers()
