@@ -61,6 +61,8 @@ struct Digger {
             preferencesController.show()
         }
         let welcomeController = WelcomeWindowController()
+        let appDelegate = AppDelegate(welcomeController: welcomeController)
+        app.delegate = appDelegate
         welcomeController.onOpenPreferences = {
             preferencesController.show()
         }
@@ -82,7 +84,7 @@ struct Digger {
 
         withExtendedLifetime(menuController) {
             withExtendedLifetime(eventTap) {
-                withExtendedLifetime(welcomeController) {
+                withExtendedLifetime((welcomeController, appDelegate)) {
                     app.run()
                 }
             }
