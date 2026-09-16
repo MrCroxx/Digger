@@ -59,16 +59,13 @@ final class PopupFunctionRunner {
                 let result = try await translator.runPromptStreamWithCacheInfo(function.prompt, text: input, useCache: !forceAPI)
                 trace("stream_ready cache_hit=\(result.isCacheHit)")
                 var output = ""
-                var lastUpdate = ContinuousClock.now
                 for try await delta in result.stream {
                     try Task.checkCancellation()
                     if output.isEmpty && !delta.isEmpty { trace("first_text") }
                     output += delta
-                    // At most 20 visual updates per second. Final output always flushes.
-                    if lastUpdate.duration(to: .now) >= .milliseconds(50) {
-                        publish(output, final: false, cached: result.isCacheHit)
-                        lastUpdate = .now
-                    }
+                    // The model buffers visual updates on its own clock. Forward every
+                    // delta so a short chunk cannot get stranded during a network pause.
+                    publish(output, final: false, cached: result.isCacheHit)
                 }
                 try Task.checkCancellation()
                 publish(output.isEmpty ? UIStrings.Popup.emptyResult : output, final: true, cached: result.isCacheHit)

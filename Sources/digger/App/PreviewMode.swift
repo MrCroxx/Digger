@@ -87,7 +87,15 @@ enum PreviewMode {
                                 }
                             }
                         }
+                        // Final network delivery may precede the last paced display frame.
+                        for _ in 0..<100 where selectionPopup.model.running {
+                            try? await Task.sleep(for: .milliseconds(20))
+                        }
+                        assert(!selectionPopup.model.running, "Display buffer failed to drain")
+                        assert(selectionPopup.model.sections[0].text == fixture)
+                        assert(selectionPopup.model.sections[0].markdown.renderHTML() == PopupMarkdown.parse(fixture).renderHTML())
                         if args.contains("--verify-stream-layout"), let window {
+                            await PreviewStreamLayout.verifyStreamInteraction(window, requestID: id, functionID: functions[0].id)
                             PreviewStreamLayout.verifyScrolling(window)
                             // User resizing must still update the reading width.
                             window.setContentSize(NSSize(width: 440, height: 320))

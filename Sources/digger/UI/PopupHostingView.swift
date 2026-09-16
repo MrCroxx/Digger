@@ -18,12 +18,36 @@ final class PopupHostingView<Content: View>: NSHostingView<Content> {
 /// Configure the actual enclosing scroller as soon as SwiftUI inserts content.
 /// A hosting-view layout callback is not guaranteed for every streamed update.
 struct PopupScrollStyle: NSViewRepresentable {
+    var followsStreaming = false
+    var requestID: UUID?
     func makeNSView(context: Context) -> Marker { Marker() }
-    func updateNSView(_ view: Marker, context: Context) { view.configureScroller() }
+    func updateNSView(_ view: Marker, context: Context) {
+        view.update(followsStreaming: followsStreaming, requestID: requestID)
+    }
 
     final class Marker: NSView {
         private weak var observedScrollView: NSScrollView?
         private var styleObservation: NSKeyValueObservation?
+        private var followsStreaming = false
+        private var followFinalLayout = false
+        private var followsBottom = true
+        private var requestID: UUID?
+        private var previousHeight: CGFloat = 0
+        private var previousOrigin: CGFloat = 0
+        private var adjustingScroll = false
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        func update(followsStreaming: Bool, requestID: UUID?) {
+            if self.followsStreaming && !followsStreaming { followFinalLayout = true }
+            self.followsStreaming = followsStreaming
+            if self.requestID != requestID {
+                self.requestID = requestID
+                followsBottom = true
+                followFinalLayout = false
+            }
+            configureScroller()
+        }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); configureScroller() }
@@ -32,7 +56,18 @@ struct PopupScrollStyle: NSViewRepresentable {
         func configureScroller() {
             guard let scrollView = enclosingScrollView else { return }
             if observedScrollView !== scrollView {
+                NotificationCenter.default.removeObserver(self)
                 observedScrollView = scrollView
+                if let document = scrollView.documentView {
+                    previousHeight = document.frame.height
+                    previousOrigin = scrollView.contentView.bounds.minY
+                    document.postsFrameChangedNotifications = true
+                    scrollView.contentView.postsBoundsChangedNotifications = true
+                    NotificationCenter.default.addObserver(self, selector: #selector(documentResized),
+                        name: NSView.frameDidChangeNotification, object: document)
+                    NotificationCenter.default.addObserver(self, selector: #selector(viewportScrolled),
+                        name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+                }
                 // SwiftUI/AppKit may restore the preferred style after insertion.
                 // Keep that change from temporarily consuming viewport width.
                 styleObservation = scrollView.observe(\.scrollerStyle) { [weak self] _, _ in
@@ -47,6 +82,33 @@ struct PopupScrollStyle: NSViewRepresentable {
             if let scroller = scrollView.horizontalScroller, !(scroller is PopupScroller) {
                 scrollView.horizontalScroller = PopupScroller(replacing: scroller)
             }
+        }
+
+        @objc private func viewportScrolled() {
+            guard requestID != nil, !adjustingScroll, let scroll = observedScrollView,
+                  let document = scroll.documentView else { return }
+            // Layout can move the clip view before announcing a new document frame.
+            // Only a scroll within the same geometry changes the user's follow intent.
+            guard abs(document.frame.height - previousHeight) < 0.5 else { return }
+            let bounds = scroll.contentView.bounds
+            followsBottom = document.frame.height - bounds.maxY <= 24
+            previousOrigin = bounds.minY
+        }
+
+        @objc private func documentResized() {
+            guard requestID != nil, !adjustingScroll, let scroll = observedScrollView,
+                  let document = scroll.documentView else { return }
+            let height = document.frame.height
+            guard abs(height - previousHeight) >= 0.5 else { return }
+            let bottom = max(0, height - scroll.contentView.bounds.height)
+            let target = (followsStreaming || followFinalLayout) && followsBottom ? bottom : min(previousOrigin, bottom)
+            followFinalLayout = false
+            previousHeight = height
+            adjustingScroll = true
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: target))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            previousOrigin = target
+            adjustingScroll = false
         }
     }
 }

@@ -9,6 +9,39 @@ import cmark_gfm_extensions
 /// Raw source in ResultModel is never rewritten and remains the copy/cache value.
 enum PopupMarkdown {
     private typealias Node = UnsafeMutablePointer<cmark_node>
+
+    struct Block: Identifiable, Equatable {
+        let id: Int
+        let source: String
+        let content: MarkdownUI.MarkdownContent
+        // A useful diagnostic: an unchanged block keeps its parsed value.
+        let revision = UUID()
+    }
+
+    /// Parse the document for correct GFM/reference-link semantics, but only build
+    /// MarkdownUI values for changed blocks. Stable slots keep preceding paragraphs
+    /// and their measured margins out of the active tail's SwiftUI identity changes.
+    static func blocks(_ source: String, reusing previous: [Block] = []) -> [Block] {
+        cmark_gfm_core_extensions_ensure_registered()
+        guard let parser = cmark_parser_new(CMARK_OPT_DEFAULT) else { return [] }
+        defer { cmark_parser_free(parser) }
+        for name in ["autolink", "strikethrough", "tagfilter", "tasklist", "table"] {
+            if let ext = cmark_find_syntax_extension(name) { cmark_parser_attach_syntax_extension(parser, ext) }
+        }
+        cmark_parser_feed(parser, source, source.utf8.count)
+        guard let document = cmark_parser_finish(parser) else { return [] }
+        defer { cmark_node_free(document) }
+        _ = restoreTaskMarkers(in: document, lines: source.components(separatedBy: "\n"))
+        _ = separateMixedLists(in: document)
+        return children(of: document).enumerated().map { index, node in
+            // Rendered HTML includes resolved reference destinations and task state.
+            let rendered = cmark_render_html(node, CMARK_OPT_DEFAULT, cmark_parser_get_syntax_extensions(parser))
+            let key = rendered.map { String(cString: $0) } ?? ""
+            if let rendered { free(rendered) }
+            if previous.indices.contains(index), previous[index].source == key { return previous[index] }
+            return Block(id: index, source: key, content: block(node))
+        }
+    }
     static func parse(_ source: String) -> MarkdownUI.MarkdownContent {
         guard ["[ ]", "[x]", "[X]"].contains(where: source.contains) else { return .init(source) }
         cmark_gfm_core_extensions_ensure_registered()

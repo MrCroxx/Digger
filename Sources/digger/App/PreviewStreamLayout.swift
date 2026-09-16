@@ -55,5 +55,47 @@ enum PreviewStreamLayout {
         }
         verify(window)
     }
+
+    static func verifyStreamInteraction(_ window: NSWindow, requestID: UUID, functionID: UUID) async {
+        guard let root = window.contentView, let scroll = scrollViews(in: root).first,
+              let document = scroll.documentView else { preconditionFailure("Missing scroll view") }
+        func bottom() -> CGFloat { max(0, document.frame.height - scroll.contentView.bounds.height) }
+        func move(to y: CGFloat) {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        func blockPositions(in view: NSView) -> [String: CGFloat] {
+            var result: [String: CGFloat] = [:]
+            if let id = view.identifier?.rawValue, id.hasPrefix("stream-block-") {
+                result[id] = view.convert(view.bounds, to: document).minY
+            }
+            for child in view.subviews { result.merge(blockPositions(in: child)) { _, new in new } }
+            return result
+        }
+        let positions = blockPositions(in: document)
+        assert(positions.count >= 5, "Missing stable block geometry probes")
+        move(to: bottom())
+        var text = fixture
+        for step in 0..<3 {
+            if step == 1 { move(to: 40) }
+            if step == 2 { move(to: bottom()) }
+            text += "\n\n" + String(repeating: "A paced burst of new text. 中文连续输出。 ", count: 20)
+            selectionPopup.model.receive(text, requestID: requestID, functionID: functionID, phase: .streaming)
+            try? await Task.sleep(for: .milliseconds(900))
+            verify(window)
+            if step == 1 {
+                assert(abs(scroll.contentView.bounds.minY - 40) < 1, "Stream stole the user's reading position")
+            } else {
+                assert(abs(scroll.contentView.bounds.minY - bottom()) < 1, "Stream stopped following the bottom")
+            }
+            let current = blockPositions(in: document)
+            for (id, y) in positions {
+                assert(abs((current[id] ?? -1000) - y) < 0.5, "An earlier Markdown block moved during streaming")
+            }
+        }
+        selectionPopup.model.receive(text, requestID: requestID, functionID: functionID, phase: .complete)
+        try? await Task.sleep(for: .milliseconds(150))
+        assert(!selectionPopup.model.running)
+    }
 }
 #endif
