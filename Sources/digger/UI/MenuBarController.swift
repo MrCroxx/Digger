@@ -38,9 +38,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func configureStatusItem() {
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "text.magnifyingglass", accessibilityDescription: UIStrings.Menu.appTitle)
-            image?.isTemplate = true
-            button.image = image
+            button.image = MenuBarIcon.makeImage()
             button.toolTip = UIStrings.Menu.appTitle
         }
 

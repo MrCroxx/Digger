@@ -66,6 +66,7 @@ struct MarkdownContent: View {
                         }
                         .fixedSize(horizontal: true, vertical: true)
                         .padding(8)
+                        .background(PopupScrollStyle())
                 }
             }
             .background(DiggerTheme.canvas, in: RoundedRectangle(cornerRadius: 6))
@@ -77,6 +78,7 @@ struct MarkdownContent: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .markdownTableBorderStyle(.init(color: DiggerTheme.line))
                     .markdownTableBackgroundStyle(.alternatingRows(DiggerTheme.paper, DiggerTheme.canvas))
+                    .background(PopupScrollStyle())
             }
             .markdownMargin(top: 0, bottom: 8)
         }

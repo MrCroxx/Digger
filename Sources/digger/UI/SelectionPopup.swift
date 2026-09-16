@@ -143,45 +143,55 @@ private struct ResultView: View {
         VStack(spacing: 0) {
             toolbar
             separator
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    if let notice = model.notice {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label(notice.title, systemImage: "info.circle")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text(notice.message).font(.system(size: model.fontSize))
-                                .lineSpacing(3).textSelection(.enabled)
-                            if notice.needsAccessibility {
-                                Button(UIStrings.Welcome.openAccessibilityButton) { SystemPreferencesLinks.openAccessibility() }
-                                    .buttonStyle(.borderedProminent)
-                            } else {
-                                Button(UIStrings.Menu.preferences) { controller.openPreferences() }
-                                    .buttonStyle(.bordered)
-                            }
-                        }
-                    } else {
-                        if !model.originalCollapsed { source }
-                        if model.sections.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(localized("No prompts enabled", "尚未启用 Prompt", "有効なプロンプトがありません")).font(.headline)
-                                Text(localized("Enable or add a prompt in Settings to get started.", "在设置中启用或添加 Prompt 后即可开始。", "設定でプロンプトを有効にするか追加してください。"))
-                                Button(UIStrings.Menu.preferences) { controller.openPreferences() }
-                            }
-                        }
-                        ForEach(model.sections) { section in
-                            if section.id != model.sections.first?.id { separator }
-                            resultSection(section)
-                        }
-                    }
+            GeometryReader { viewport in
+                ScrollView(.vertical) {
+                    readingContent
+                        .padding(12)
+                        .frame(width: viewport.size.width, alignment: .topLeading)
+                        .background(PopupScrollStyle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
             }
         }
         .background(DiggerTheme.paper.opacity(model.opacity / 100))
         .foregroundStyle(DiggerTheme.ink).tint(DiggerTheme.accent)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .ignoresSafeArea(.container, edges: .top)
+    }
+
+    // The viewport owns the width. Incoming Markdown may change its ideal size,
+    // but must not recenter the reading area or negotiate a new window minimum.
+    private var readingContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let notice = model.notice {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(notice.title, systemImage: "info.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(notice.message).font(.system(size: model.fontSize))
+                        .lineSpacing(3).textSelection(.enabled)
+                    if notice.needsAccessibility {
+                        Button(UIStrings.Welcome.openAccessibilityButton) { SystemPreferencesLinks.openAccessibility() }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(UIStrings.Menu.preferences) { controller.openPreferences() }
+                            .buttonStyle(.bordered)
+                    }
+                }
+            } else {
+                if !model.originalCollapsed { source }
+                if model.sections.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(localized("No prompts enabled", "尚未启用 Prompt", "有効なプロンプトがありません")).font(.headline)
+                        Text(localized("Enable or add a prompt in Settings to get started.", "在设置中启用或添加 Prompt 后即可开始。", "設定でプロンプトを有効にするか追加してください。"))
+                        Button(UIStrings.Menu.preferences) { controller.openPreferences() }
+                    }
+                }
+                ForEach(model.sections) { section in
+                    if section.id != model.sections.first?.id { separator }
+                    resultSection(section)
+                }
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private var separator: some View {

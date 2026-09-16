@@ -1,15 +1,44 @@
 import AppKit
 import SwiftUI
 
-/// Keep SwiftUI's native scrolling, with popup-specific overlay scrollers.
+/// Let AppKit own the popup size while SwiftUI renders its contents.
 final class PopupHostingView<Content: View>: NSHostingView<Content> {
-    override func layout() {
-        super.layout()
-        styleScrollViews(in: self)
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+        // AppKit and the user's resize gesture own the panel size, never a
+        // transient intrinsic/minimum size from a partial Markdown snapshot.
+        sizingOptions = []
     }
 
-    private func styleScrollViews(in view: NSView) {
-        if let scrollView = view as? NSScrollView {
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+}
+
+/// Configure the actual enclosing scroller as soon as SwiftUI inserts content.
+/// A hosting-view layout callback is not guaranteed for every streamed update.
+struct PopupScrollStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> Marker { Marker() }
+    func updateNSView(_ view: Marker, context: Context) { view.configureScroller() }
+
+    final class Marker: NSView {
+        private weak var observedScrollView: NSScrollView?
+        private var styleObservation: NSKeyValueObservation?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); configureScroller() }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); configureScroller() }
+
+        func configureScroller() {
+            guard let scrollView = enclosingScrollView else { return }
+            if observedScrollView !== scrollView {
+                observedScrollView = scrollView
+                // SwiftUI/AppKit may restore the preferred style after insertion.
+                // Keep that change from temporarily consuming viewport width.
+                styleObservation = scrollView.observe(\.scrollerStyle) { [weak self] _, _ in
+                    MainActor.assumeIsolated { self?.configureScroller() }
+                }
+            }
             if scrollView.scrollerStyle != .overlay { scrollView.scrollerStyle = .overlay }
             if !scrollView.autohidesScrollers { scrollView.autohidesScrollers = true }
             if let scroller = scrollView.verticalScroller, !(scroller is PopupScroller) {
@@ -19,7 +48,6 @@ final class PopupHostingView<Content: View>: NSHostingView<Content> {
                 scrollView.horizontalScroller = PopupScroller(replacing: scroller)
             }
         }
-        for child in view.subviews { styleScrollViews(in: child) }
     }
 }
 
