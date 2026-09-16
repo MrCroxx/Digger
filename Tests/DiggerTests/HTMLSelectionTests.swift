@@ -5,6 +5,32 @@ import Testing
 
 @MainActor
 struct HTMLSelectionTests {
+    @Test func codecovSelectionInsideLayoutTableKeepsIndependentTables() throws {
+        let file = try #require(Bundle.module.url(forResource: "codecov-selection", withExtension: "html", subdirectory: "Fixtures"))
+        let markdown = try #require(HTMLSelectionMarkdown.convert(String(contentsOf: file, encoding: .utf8)))
+        #expect(markdown.hasPrefix("## [Codecov]"))
+        #expect(!markdown.contains("Unselected"))
+        let content = PopupMarkdown.parse(markdown)
+        let html = content.renderHTML()
+        #expect(html.components(separatedBy: "<table>").count - 1 == 2)
+        #expect(html.components(separatedBy: "<tr>").count - 1 == 10)
+        #expect(html.contains("<h2><a href=\"https://example.com/coverage\">Codecov</a> Report</h2>"))
+        #expect(html.contains("<code>93.52% &lt;100.00%&gt; (-0.01%)</code>"))
+        #expect(content.renderPlainText().components(separatedBy: "foyer-storage/src/engine/block/engine.rs").count - 1 == 1)
+
+        let model = ResultModel(), id = UUID()
+        let function = PopupFunction(id: UUID(), title: "Translation", prompt: "Translate", isTranslation: true)
+        model.begin(original: markdown, requestID: id, functions: [function])
+        var accumulated = ""
+        for character in markdown {
+            accumulated.append(character)
+            model.update(accumulated, requestID: id, functionID: function.id, phase: .streaming)
+        }
+        #expect(model.originalMarkdown.renderHTML() == html)
+        #expect(model.sections[0].markdown.renderHTML() == html)
+        #expect(model.sections[0].text == markdown)
+    }
+
     @Test func webpageTOCKeepsHierarchyLinksAndCode() throws {
         let file = try #require(Bundle.module.url(forResource: "toc", withExtension: "html", subdirectory: "Fixtures"))
         let markdown = try #require(HTMLSelectionMarkdown.convert(String(contentsOf: file, encoding: .utf8)))
@@ -18,6 +44,27 @@ struct HTMLSelectionTests {
         #expect(html.contains("href=\"#scale\""))
         #expect(html.contains("0. “Task Failed Successfully”"))
         #expect(html.contains("X. “A Planet Upside Down”"))
+    }
+
+    @Test func nestedTableContainersKeepSiblingContentWithoutDuplicatingRows() throws {
+        let source = """
+        <table><tr><td>Before</td><td>
+          <table><tr><td><h2>Report</h2>
+            <table><thead><tr><th>Value</th></tr></thead>
+              <tbody><tr><td><strong>Only once</strong></td></tr></tbody>
+              <tfoot><tr><td>Total</td></tr></tfoot>
+            </table>
+          </td></tr></table>
+        </td><td>After</td></tr></table>
+        """
+        let markdown = try #require(HTMLSelectionMarkdown.convert(source))
+        let html = PopupMarkdown.parse(markdown).renderHTML()
+        #expect(html.hasPrefix("<p>Before</p>\n<h2>Report</h2>"))
+        #expect(html.hasSuffix("<p>After</p>\n"))
+        #expect(html.components(separatedBy: "<table>").count - 1 == 1)
+        #expect(html.components(separatedBy: "<tr>").count - 1 == 3)
+        #expect(html.components(separatedBy: "<strong>Only once</strong>").count - 1 == 1)
+        #expect(markdown.contains("\n| Total |"))
     }
 
     @Test func browserRichSelectionWinsOverFlattenedAccessibilityText() throws {

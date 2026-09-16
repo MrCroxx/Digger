@@ -81,7 +81,7 @@ enum HTMLSelectionMarkdown {
         case "h1", "h2", "h3", "h4", "h5", "h6":
             return "\n\n" + String(repeating: "#", count: Int(tag.suffix(1)) ?? 1) + " "
                 + renderChildren(element).trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n"
-        case "p", "div", "section", "article", "header", "footer", "dl", "dt", "dd":
+        case "p", "div", "section", "article", "header", "footer", "dl", "dt", "dd", "tr", "td", "th":
             let content = renderChildren(element).trimmingCharacters(in: .whitespacesAndNewlines)
             return content.isEmpty ? "" : "\n\n" + content + "\n\n"
         default: return renderChildren(element)
@@ -103,7 +103,14 @@ enum HTMLSelectionMarkdown {
     }
 
     private static func table(_ element: Element) -> String {
-        let rows = (try? element.select("tr").array()) ?? []
+        // Clipboard fragments can retain a layout table around the selected report.
+        // GFM cannot nest tables: unwrap that container, preserving block boundaries
+        // and rendering each inner table once instead of flattening it into a cell.
+        let tables = (try? element.select("table").array()) ?? []
+        if tables.contains(where: { $0 !== element }) {
+            return "\n\n" + renderChildren(element) + "\n\n"
+        }
+        let rows = tableRows(element)
         let cells = rows.map { row in
             row.getChildNodes().compactMap { $0 as? Element }.filter { ["td", "th"].contains($0.tagNameNormal()) }.map {
                 renderChildren($0).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,6 +123,16 @@ enum HTMLSelectionMarkdown {
             "| " + (values + Array(repeating: "", count: max(0, width - values.count))).joined(separator: " | ") + " |"
         }
         return "\n\n" + ([row(first), row(Array(repeating: "---", count: width))] + cells.dropFirst().map(row)).joined(separator: "\n") + "\n\n"
+    }
+
+    private static func tableRows(_ element: Element) -> [Element] {
+        element.getChildNodes().compactMap { $0 as? Element }.flatMap { child -> [Element] in
+            switch child.tagNameNormal() {
+            case "tr": return [child]
+            case "thead", "tbody", "tfoot": return tableRows(child)
+            default: return []
+            }
+        }
     }
 
     private static func attribute(_ element: Element?, _ name: String) -> String { (try? element?.attr(name)) ?? "" }
