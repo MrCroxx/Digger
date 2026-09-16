@@ -57,24 +57,39 @@ Changes save automatically. Tooltips follow native macOS timing.
 
 ## Build and validate
 
+The local and CI packaging entry point is the same:
+
 ```sh
-swift build
-swift test
-/usr/bin/python3 scripts/test-transport.py
-CREATE_DMG=0 ./scripts/build-app.sh
+DIGGER_MAC_UNSIGNED=1 ./scripts/package-desktop.sh
 ```
 
-The app is written to `dist/Digger.app`. For a debuggable app bundle, use `BUILD_CONFIGURATION=debug CREATE_DMG=0 ./scripts/build-app.sh`. Quit the running app before replacing `/Applications/Digger.app` with the new bundle. Run `./scripts/build-app.sh` without `CREATE_DMG=0` to also create a DMG. Signing/notarization options are documented in the build script.
+This checks the diff, runs the packaging regression tests and all Swift tests against a temporary loopback API, builds Release, signs the app, and verifies a relocated copy before creating the archives. The fixture uses a fake key and never contacts a provider. The mounted DMG and extracted ZIP are checked again, including startup and resource loading with no access to preferences or Accessibility permissions.
 
-The transport test starts a temporary loopback-only API with fixture text and a fake key. It validates streaming, cache, errors, request payloads and cancellation without contacting a provider.
+Outputs:
 
-GitHub Actions runs on pull requests and pushes to `main`: macOS 15 with Xcode 26.2 builds Debug, runs the local fixture tests, and packages a Release app into a DMG. CI verifies the image checksum, mounts it read-only, and checks the bundled app's signature and Applications shortcut. Each successful run uploads the installer as `Digger-DMG` for seven days. The app is ad-hoc signed for local use, not notarized; CI needs no API key or signing certificate.
+- `dist/Digger.app`
+- `dist/Digger-<version>-<arch>.dmg`
+- `dist/Digger-<version>-<arch>.zip`
 
-To create the same DMG locally without Finder automation:
+Build each architecture on a matching Mac (`arm64` or `x64`). Like Verso, packaging uses macOS `hdiutil` directly, sets both the mounted volume icon and the local DMG file icon, and includes an Applications shortcut. It does not depend on `create-dmg`, a custom background, or Finder automation. The DMG file icon is filesystem metadata; the volume icon is embedded in the image and survives downloads.
+
+`DIGGER_MAC_UNSIGNED=1` explicitly selects ad-hoc signing for local use; these builds are not notarized. To use an installed signing identity and optionally notarize:
 
 ```sh
-CREATE_DMG=1 USE_CREATE_DMG=0 CONFIGURE_DMG=0 GENERATE_DMG_BG=0 ./scripts/build-app.sh
-./scripts/verify-dmg.sh dist/Digger-*.dmg
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  NOTARIZE=1 NOTARY_PROFILE="digger-notary" ./scripts/package-desktop.sh
+```
+
+The app is signed and stapled before either archive is created. Configure `NOTARY_PROFILE` in Keychain with `xcrun notarytool store-credentials` first. Without `DIGGER_MAC_UNSIGNED=1`, `SIGN_IDENTITY` is required. Environment variables override the defaults in `scripts/build-config.sh`.
+
+For app-only packaging with the same checks, use `DIGGER_MAC_UNSIGNED=1 ./scripts/package-desktop.sh --dir`. For a quick local build without the test suite, use `DIGGER_MAC_UNSIGNED=1 CREATE_DMG=0 ./scripts/build-app.sh`; add `BUILD_CONFIGURATION=debug` for a debuggable bundle. Quit the running app before replacing `/Applications/Digger.app`.
+
+GitHub Actions runs on pull requests and pushes to `main`: macOS 15 with Xcode 26.2 builds Debug and runs the same packaging entry point. Each successful run uploads both archives as `Digger-macOS` for seven days, without requiring API keys or signing certificates.
+
+To verify an existing DMG independently:
+
+```sh
+./scripts/verify-dmg.sh dist/Digger-0.0.1-arm64.dmg
 ```
 
 Review the UI offline in a debug build:

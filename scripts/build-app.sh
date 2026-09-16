@@ -13,7 +13,8 @@ if [[ "$BUILD_CONFIGURATION" != "debug" && "$BUILD_CONFIGURATION" != "release" ]
   echo "BUILD_CONFIGURATION must be debug or release"
   exit 1
 fi
-BUILD_DIR="$ROOT_DIR/.build/$BUILD_CONFIGURATION"
+cd "$ROOT_DIR"
+BUILD_DIR="$(swift build -c "$BUILD_CONFIGURATION" --show-bin-path)"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
 APP_NAME="${APP_NAME:-Digger}"
@@ -23,12 +24,8 @@ SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARIZE="${NOTARIZE:-0}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 CREATE_DMG="${CREATE_DMG:-1}"
-DMG_BG_SCRIPT="$ROOT_DIR/scripts/dmg-background.swift"
-DMG_BG_PATH="$OUTPUT_DIR/dmg-background.png"
-CONFIGURE_DMG="${CONFIGURE_DMG:-0}"
-USE_CREATE_DMG="${USE_CREATE_DMG:-1}"
-GENERATE_DMG_BG="${GENERATE_DMG_BG:-1}"
-DMG_BG_SCALE="${DMG_BG_SCALE:-2}"
+CREATE_ZIP="${CREATE_ZIP:-$CREATE_DMG}"
+DIGGER_MAC_UNSIGNED="${DIGGER_MAC_UNSIGNED:-0}"
 APP_ICON_PATH="$ROOT_DIR/Sources/digger/Resources/AppIcon.icns"
 
 APP_DIR="$OUTPUT_DIR/$APP_NAME.app"
@@ -36,6 +33,24 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
+
+if [[ "$DIGGER_MAC_UNSIGNED" == "1" ]]; then
+  if [[ -n "$SIGN_IDENTITY" || "$NOTARIZE" == "1" ]]; then
+    echo "DIGGER_MAC_UNSIGNED=1 cannot be combined with SIGN_IDENTITY or NOTARIZE=1" >&2
+    exit 1
+  fi
+elif [[ -z "$SIGN_IDENTITY" ]]; then
+  echo "Set SIGN_IDENTITY, or DIGGER_MAC_UNSIGNED=1 for an ad-hoc local build." >&2
+  exit 1
+fi
+if [[ "$NOTARIZE" == "1" && -z "$NOTARY_PROFILE" ]]; then
+  echo "NOTARY_PROFILE is required for notarization" >&2
+  exit 1
+fi
+if [[ ! -f "$APP_ICON_PATH" ]]; then
+  echo "App icon not found at $APP_ICON_PATH" >&2
+  exit 1
+fi
 
 echo "Building $BUILD_CONFIGURATION binary..."
 swift build -c "$BUILD_CONFIGURATION"
@@ -52,7 +67,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 cp "$BUILD_DIR/digger" "$MACOS_DIR/$APP_NAME"
 
 if command -v install_name_tool >/dev/null; then
-  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME" || true
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME"
 fi
 
 if [[ -f "$ROOT_DIR/Sources/digger/Resources/AppIcon.icns" ]]; then
@@ -86,6 +101,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <string>$VERSION</string>
   <key>CFBundleVersion</key>
   <string>$VERSION</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
 </dict>
@@ -130,151 +147,44 @@ if [[ "$NOTARIZE" == "1" ]]; then
     exit 1
   fi
 
-  ZIP_PATH="$OUTPUT_DIR/$APP_NAME.zip"
+  ZIP_PATH="$OUTPUT_DIR/$APP_NAME-notarization.zip"
   echo "Notarizing app with profile: $NOTARY_PROFILE"
   rm -f "$ZIP_PATH"
   ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
   xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
   xcrun stapler staple "$APP_DIR"
   spctl -a -vv "$APP_DIR"
+  rm -f "$ZIP_PATH"
   echo "Notarization complete"
 fi
 
+# Validate the same signed/stapled app that goes into both archives.
+/usr/bin/python3 "$ROOT_DIR/scripts/smoke_macos.py" "$APP_DIR"
+ARCH="$(lipo -archs "$MACOS_DIR/$APP_NAME")"
+case "$ARCH" in
+  arm64) ;;
+  x86_64) ARCH=x64 ;;
+  *) echo "Build one architecture on a matching Mac; got: $ARCH" >&2; exit 1 ;;
+esac
+ARTIFACT="$OUTPUT_DIR/$APP_NAME-$VERSION-$ARCH"
+
 if [[ "$CREATE_DMG" == "1" ]]; then
-  if ! command -v hdiutil >/dev/null; then
-    echo "hdiutil not found; cannot create DMG"
-    exit 1
-  elif [[ "$CONFIGURE_DMG" == "1" ]] && ! command -v osascript >/dev/null; then
-    echo "osascript not found; cannot configure DMG layout"
-    exit 1
-  else
-    DMG_NAME="$APP_NAME-$VERSION"
-    DMG_TEMP_PATH="$OUTPUT_DIR/$DMG_NAME-temp.dmg"
-    DMG_PATH="$OUTPUT_DIR/$DMG_NAME.dmg"
-    STAGING_DIR="$(mktemp -d)"
-    MOUNT_DIR="$(mktemp -d)"
-    DMG_WINDOW_WIDTH=640
-    DMG_WINDOW_HEIGHT=360
-    DMG_ICON_SIZE=96
-    DMG_APP_POS_X=160
-    DMG_APP_POS_Y=170
-    DMG_APPS_POS_X=480
-    DMG_APPS_POS_Y=170
+  STAGING_DIR="$(mktemp -d)"
+  trap 'rm -rf "$STAGING_DIR"' EXIT
+  ditto "$APP_DIR" "$STAGING_DIR/$APP_NAME.app"
+  ln -s /Applications "$STAGING_DIR/Applications"
+  /usr/bin/python3 "$ROOT_DIR/scripts/create_macos_dmg.py" \
+    "$STAGING_DIR" "$ARTIFACT.dmg" "$APP_ICON_PATH" "$APP_NAME"
+  "$ROOT_DIR/scripts/verify-dmg.sh" "$ARTIFACT.dmg" "$APP_NAME"
+  echo "DMG created at: $ARTIFACT.dmg"
+fi
 
-    echo "Creating DMG staging folder..."
-    rm -f "$DMG_TEMP_PATH" "$DMG_PATH"
-    mkdir -p "$OUTPUT_DIR"
-    cp -R "$APP_DIR" "$STAGING_DIR/"
-
-    if [[ "$GENERATE_DMG_BG" == "1" ]]; then
-      if [[ -f "$DMG_BG_SCRIPT" ]]; then
-        echo "Rendering DMG background..."
-        if ! swift "$DMG_BG_SCRIPT" "$DMG_BG_PATH" "$APP_NAME" "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" "$DMG_BG_SCALE"; then
-          echo "Failed to render DMG background; continuing without background"
-          rm -f "$DMG_BG_PATH"
-        fi
-      else
-        echo "DMG background script not found; skipping"
-      fi
-    else
-      rm -f "$DMG_BG_PATH"
-    fi
-
-    if [[ -f "$DMG_BG_PATH" ]]; then
-      mkdir -p "$STAGING_DIR/.background"
-      cp "$DMG_BG_PATH" "$STAGING_DIR/.background/dmg-background.png"
-      chflags hidden "$STAGING_DIR/.background" || true
-    fi
-
-    if [[ "$USE_CREATE_DMG" == "1" ]] && command -v create-dmg >/dev/null; then
-      echo "Building DMG image with create-dmg..."
-      rm -f "$DMG_PATH"
-      if [[ ! -f "$APP_ICON_PATH" ]]; then
-        echo "App icon not found at $APP_ICON_PATH; cannot set DMG volume icon"
-        exit 1
-      fi
-      VOLICON_ARGS=(--volicon "$APP_ICON_PATH")
-      if [[ -f "$STAGING_DIR/.background/dmg-background.png" ]]; then
-        create-dmg \
-          --volname "$APP_NAME" \
-          --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
-          --icon-size "$DMG_ICON_SIZE" \
-          "${VOLICON_ARGS[@]}" \
-          --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
-          --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
-          --background "$STAGING_DIR/.background/dmg-background.png" \
-          "$DMG_PATH" \
-          "$STAGING_DIR"
-      else
-        create-dmg \
-          --volname "$APP_NAME" \
-          --window-size "$DMG_WINDOW_WIDTH" "$DMG_WINDOW_HEIGHT" \
-          --icon-size "$DMG_ICON_SIZE" \
-          "${VOLICON_ARGS[@]}" \
-          --icon "$APP_NAME.app" "$DMG_APP_POS_X" "$DMG_APP_POS_Y" \
-          --app-drop-link "$DMG_APPS_POS_X" "$DMG_APPS_POS_Y" \
-          "$DMG_PATH" \
-          "$STAGING_DIR"
-      fi
-      rm -rf "$STAGING_DIR" "$MOUNT_DIR"
-      echo "DMG created at: $DMG_PATH"
-    else
-      ln -s /Applications "$STAGING_DIR/Applications"
-      echo "Building DMG image..."
-      hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDRW "$DMG_TEMP_PATH"
-      hdiutil attach -mountpoint "$MOUNT_DIR" -noverify -nobrowse "$DMG_TEMP_PATH"
-
-      if [[ ! -f "$APP_ICON_PATH" ]]; then
-        echo "App icon not found at $APP_ICON_PATH; cannot set DMG volume icon"
-        exit 1
-      fi
-      if ! command -v SetFile >/dev/null; then
-        echo "SetFile not found; cannot set DMG volume icon"
-        exit 1
-      fi
-      echo "Setting DMG volume icon..."
-      cp "$APP_ICON_PATH" "$MOUNT_DIR/.VolumeIcon.icns"
-      SetFile -a C "$MOUNT_DIR"
-
-      if [[ "$CONFIGURE_DMG" == "1" ]]; then
-        echo "Configuring DMG window layout..."
-        for attempt in {1..5}; do
-          if osascript <<EOF
- tell application "Finder"
-   set dmgFolder to POSIX file "$MOUNT_DIR" as alias
-   open dmgFolder
-   set current view of container window of dmgFolder to icon view
-   set toolbar visible of container window of dmgFolder to false
-   set statusbar visible of container window of dmgFolder to false
-   set the bounds of container window of dmgFolder to {100, 100, 100 + $DMG_WINDOW_WIDTH, 100 + $DMG_WINDOW_HEIGHT}
-   set viewOptions to the icon view options of container window of dmgFolder
-   set arrangement of viewOptions to not arranged
-   set icon size of viewOptions to $DMG_ICON_SIZE
-   if exists file ".background:dmg-background.png" of dmgFolder then
-     set background picture of viewOptions to file ".background:dmg-background.png" of dmgFolder
-   end if
-   set position of item "$APP_NAME.app" of container window of dmgFolder to {$DMG_APP_POS_X, $DMG_APP_POS_Y}
-   set position of item "Applications" of container window of dmgFolder to {$DMG_APPS_POS_X, $DMG_APPS_POS_Y}
-   delay 1
-   close container window of dmgFolder
- end tell
-EOF
-          then
-            break
-          fi
-          sleep 1
-        done
-      else
-        echo "Skipping DMG Finder layout (CONFIGURE_DMG=0)"
-      fi
-
-      hdiutil detach "$MOUNT_DIR"
-
-      echo "Compressing DMG..."
-      hdiutil convert "$DMG_TEMP_PATH" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH"
-
-      rm -rf "$STAGING_DIR" "$MOUNT_DIR" "$DMG_TEMP_PATH"
-      echo "DMG created at: $DMG_PATH"
-    fi
-  fi
+if [[ "$CREATE_ZIP" == "1" ]]; then
+  rm -f "$ARTIFACT.zip"
+  ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ARTIFACT.zip"
+  ZIP_CHECK_DIR="$(mktemp -d)"
+  trap 'rm -rf "${STAGING_DIR:-}" "$ZIP_CHECK_DIR"' EXIT
+  ditto -x -k "$ARTIFACT.zip" "$ZIP_CHECK_DIR"
+  /usr/bin/python3 "$ROOT_DIR/scripts/smoke_macos.py" "$ZIP_CHECK_DIR/$APP_NAME.app"
+  echo "ZIP created at: $ARTIFACT.zip"
 fi
