@@ -17,6 +17,7 @@ enum AppPreferences {
     static let thinkEffortKey = "OpenAIThinkEffort"
     static let popupMaxWidthKey = "PopupMaxWidth"
     static let popupMaxHeightKey = "PopupMaxHeight"
+    static let popupAutomaticSizeKey = "PopupAutomaticSize"
     static let popupOpacityKey = "PopupOpacity"
     static let popupTooltipDelayMsKey = "PopupTooltipDelayMs"
     static let popupCollapsedFunctionIDsKey = "PopupCollapsedFunctionIDs"
@@ -34,8 +35,8 @@ enum AppPreferences {
     static let skipWelcomeWhenReadyKey = "SkipWelcomeWhenReady"
     static let startOnLoginKey = "StartOnLogin"
 
-    static let defaultPopupMaxWidth: CGFloat = 520
-    static let defaultPopupMaxHeight: CGFloat = 420
+    static let defaultPopupMaxWidth: CGFloat = 640
+    static let defaultPopupMaxHeight: CGFloat = 600
     static let defaultPopupOpacity: CGFloat = 100
     static let defaultPopupTooltipDelayMs: CGFloat = 300
     static let defaultPopupShortcutKeyCode: CGKeyCode = CGKeyCode(kVK_ANSI_E)
@@ -122,6 +123,14 @@ enum AppPreferences {
         return stored > 0 ? CGFloat(stored) : defaultPopupMaxWidth
     }
 
+    static func popupAutomaticSize() -> Bool {
+        (defaults.object(forKey: popupAutomaticSizeKey) as? Bool) ?? true
+    }
+
+    static func setPopupAutomaticSize(_ value: Bool) {
+        defaults.set(value, forKey: popupAutomaticSizeKey)
+    }
+
     static func setPopupMaxWidth(_ value: CGFloat) {
         defaults.set(Double(max(value, 360)), forKey: popupMaxWidthKey)
     }
@@ -132,7 +141,7 @@ enum AppPreferences {
     }
 
     static func setPopupMaxHeight(_ value: CGFloat) {
-        defaults.set(Double(max(value, 280)), forKey: popupMaxHeightKey)
+        defaults.set(Double(max(value, 160)), forKey: popupMaxHeightKey)
     }
 
     static func popupOpacity() -> CGFloat {

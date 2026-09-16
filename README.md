@@ -18,7 +18,7 @@ The app icon uses a cream serif `d` on a walnut brown tile. The menu bar uses a 
 - **Works where you read** — reads selections through macOS Accessibility; browser HTML is converted locally to Markdown to retain lists and links. Temporary clipboard copies restore the previous clipboard.
 - **Your prompts, in parallel** — translation starts enabled and summary disabled; enable, disable, add, edit or remove custom actions and edit a shared system prompt.
 - **Bring your model** — configure an OpenAI-compatible endpoint, API key, model and reasoning effort; test the connection from Settings.
-- **Stable streaming** — answers arrive in a scrollable window that stays in place. Resize, drag or pin it as needed.
+- **Adaptive streaming window** — short selections open compactly; height grows with the answer up to your limit, then scrolls. Reading width and the expansion edge stay steady during generation. Manual resizing takes over for the current selection.
 - **Readable results** — streaming Markdown with nested lists, tables, headings, quotes, links, selectable text and literal code blocks.
 - **Control the work** — stop a generation, retain partial answers, or retry while bypassing the cache. Closing the window cancels active work.
 - **Copy what you need** — source, individual results or all results; `⌘⇧C` copies results, `⌘⌥C` includes the source.
@@ -48,7 +48,7 @@ Existing API settings, prompts and cache are retained when upgrading. If a newly
 | Page | Controls |
 | --- | --- |
 | General | Language, streaming, launch at login |
-| Popup | Typography preview, font size, background opacity, shortcut, window dimensions |
+| Popup | Typography preview, font size, background opacity, shortcut, automatic sizing with width/height limits or fixed dimensions |
 | Prompts | Shared system prompt, per-action enable switches and native multiline editors |
 | API | Endpoint, key, model, reasoning effort and connection test |
 | Cache | Capacity, expiration and cache directory |

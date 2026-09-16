@@ -121,6 +121,10 @@ struct PreferencesView: View {
         .onChange(of: viewModel.streamingEnabled) { newValue in
             AppPreferences.setTranslationStreamingEnabled(newValue)
         }
+        .onChange(of: viewModel.popupAutomaticSize) { newValue in
+            AppPreferences.setPopupAutomaticSize(newValue)
+            onPopupLayoutChange()
+        }
         .onChange(of: viewModel.startOnLogin) { newValue in
             AppPreferences.setStartOnLoginEnabled(newValue)
             StartOnLoginManager.apply(enabled: newValue)
@@ -302,13 +306,26 @@ struct PreferencesView: View {
             } label: {
                 preferenceLabel(UIStrings.Preferences.popupShortcutLabel)
             }
+            Toggle(localized("Automatically fit content", "自动适应内容", "内容に合わせてサイズを調整"),
+                   isOn: $viewModel.popupAutomaticSize)
+            Text(viewModel.popupAutomaticSize
+                 ? localized("Short selections open in a compact window. Height grows up to the limit; width stays steady during generation. Resizing manually takes over for this selection.",
+                             "短选区使用紧凑窗口，高度随内容增长，到上限后滚动。生成期间宽度保持稳定；手动缩放后，本次窗口以你的调整为准。",
+                             "短い選択は小さなウィンドウで表示し、高さは上限まで広がります。生成中の幅は固定され、手動リサイズが優先されます。")
+                 : localized("Open at the dimensions below. Longer content scrolls inside the window.",
+                             "按下面的固定尺寸打开，较长内容在窗口内滚动。",
+                             "以下の固定サイズで開き、長い内容はウィンドウ内でスクロールします。"))
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             LabeledContent {
                 TextField("", text: $viewModel.popupMaxWidthText)
                     .preferenceInputStyle()
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxWidth)
             } label: {
-                preferenceLabel(localized("Window width (pt)", "窗口宽度（点）", "ウィンドウの幅（pt）"))
+                preferenceLabel(viewModel.popupAutomaticSize
+                    ? localized("Maximum width (pt)", "最大宽度（点）", "最大幅（pt）")
+                    : localized("Window width (pt)", "窗口宽度（点）", "ウィンドウの幅（pt）"))
             }
             LabeledContent {
                 TextField("", text: $viewModel.popupMaxHeightText)
@@ -316,7 +333,9 @@ struct PreferencesView: View {
                     .frame(width: 160)
                     .focused($focusedField, equals: .popupMaxHeight)
             } label: {
-                preferenceLabel(localized("Window height (pt)", "窗口高度（点）", "ウィンドウの高さ（pt）"))
+                preferenceLabel(viewModel.popupAutomaticSize
+                    ? localized("Maximum height (pt)", "最大高度（点）", "最大の高さ（pt）")
+                    : localized("Window height (pt)", "窗口高度（点）", "ウィンドウの高さ（pt）"))
             }
         }
     }

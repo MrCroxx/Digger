@@ -39,6 +39,7 @@ enum PreviewMode {
             AppPreferences.setPopupMaxHeight(280)
         }
         if args.contains("--expanded") { AppPreferences.setPopupOriginalCollapsed(false) }
+        if args.contains("--fixed-size") { AppPreferences.setPopupAutomaticSize(false) }
         let menu = MainMenuController()
         app.mainMenu = menu.buildMainMenu()
         let preferences = PreferencesWindowController(
@@ -81,7 +82,12 @@ enum PreviewMode {
                             // Let SwiftUI commit each snapshot before inspecting geometry.
                             for _ in 0..<5 {
                                 try? await Task.sleep(for: .milliseconds(10))
-                                assert(window?.frame == frame, "Streaming changed the popup frame")
+                                if let window, let frame {
+                                    assert(window.frame.width == frame.width && window.frame.minX == frame.minX,
+                                           "Streaming changed the reading width")
+                                    assert(abs(window.frame.maxY - frame.maxY) < 0.5, "Streaming moved the top anchor")
+                                    if !AppPreferences.popupAutomaticSize() { assert(window.frame == frame) }
+                                }
                                 if args.contains("--verify-stream-layout"), let window {
                                     PreviewStreamLayout.verify(window)
                                 }
@@ -104,7 +110,7 @@ enum PreviewMode {
                             print("[Digger preview] Stream layout, scrolling and resizing passed.")
                             if !args.contains("--render") { app.terminate(nil) }
                         } else {
-                            print("[Digger preview] Markdown stream complete; window frame remained stable.")
+                            print("[Digger preview] Markdown stream complete; reading width and anchor remained stable.")
                         }
                     }
                 } else {
@@ -129,6 +135,7 @@ enum PreviewMode {
         selectionPopup.onRetry = { _, _ in showFixture() }
         if ProcessInfo.processInfo.arguments.contains("--welcome") { welcome.show() }
         else if ProcessInfo.processInfo.arguments.contains("--settings") { preferences.show() }
+        else if args.contains("--verify-autosize") { Task { await PreviewPopupSizing.run() } }
         else { showFixture() }
         if let index = args.firstIndex(of: "--render"), args.indices.contains(index + 1) {
             let path = args[index + 1]
