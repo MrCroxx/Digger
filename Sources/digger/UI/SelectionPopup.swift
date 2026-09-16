@@ -3,25 +3,50 @@ import SwiftUI
 
 @MainActor let selectionPopup = SelectionPopup()
 
-/// AppKit owns placement/focus; SwiftUI owns content. Streaming never resizes the window.
+/// AppKit owns placement and bounded sizing; SwiftUI reports the laid-out content height.
 @MainActor
-final class SelectionPopup {
+final class SelectionPopup: NSObject, NSWindowDelegate {
     let model = ResultModel()
     private var panel: ResultPanel?
     var onOpenPreferences: (() -> Void)?
     var onRetry: ((String, CGPoint) -> Void)?
     var onStop: (() -> Void)?
     private var copyTask: Task<Void, Never>?
+    private var sizingTask: Task<Void, Never>?
+    private var measuredHeight: CGFloat = 0
+    private var manuallySized = false
+    private var allowShrink = false
+    private var growthEdge = PopupSizing.GrowthEdge.top
 
     func showLoading(original: String, near location: CGPoint, requestID: UUID, functions: [PopupFunction]) {
+        sizingTask?.cancel()
+        sizingTask = nil
+        measuredHeight = 0
+        manuallySized = false
+        allowShrink = false
         model.begin(original: original, requestID: requestID, functions: functions)
         let window = ensurePanel()
+        let screen = (window.isVisible ? window.screen : nil) ?? NSScreen.screens.first { $0.frame.contains(location) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let automatic = AppPreferences.popupAutomaticSize()
+        let width = automatic ? PopupSizing.preferredWidth(source: original, fontSize: model.fontSize,
+                                                           maximum: AppPreferences.popupMaxWidth()) : AppPreferences.popupMaxWidth()
+        let size = CGSize(width: min(max(width, 360), visible.width),
+                          height: min(automatic ? PopupSizing.minimum.height : AppPreferences.popupMaxHeight(), visible.height))
+        window.minSize = CGSize(width: min(360, visible.width), height: min(PopupSizing.minimum.height, visible.height))
         if !window.isVisible {
-            let screen = NSScreen.screens.first { $0.frame.contains(location) } ?? NSScreen.main
-            let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-            let size = CGSize(width: min(max(AppPreferences.popupMaxWidth(), 360), visible.width),
-                              height: min(max(AppPreferences.popupMaxHeight(), 280), visible.height))
-            window.setFrame(Self.frame(size: size, near: location, visibleFrame: visible), display: true)
+            growthEdge = automatic ? PopupSizing.growthEdge(near: location, screen: visible) : .top
+            var frame = Self.frame(size: size, near: location, visibleFrame: visible)
+            if growthEdge == .bottom { frame.origin.y = min(max(location.y + 14, visible.minY), visible.maxY - size.height) }
+            window.setFrame(frame, display: true)
+        } else {
+            let top = window.frame.maxY
+            var frame = window.frame
+            frame.size = size
+            if growthEdge == .top { frame.origin.y = top - size.height }
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+            window.setFrame(frame, display: true)
         }
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(window.contentView)
@@ -43,16 +68,58 @@ final class SelectionPopup {
     func markStreamingStarted(for requestID: UUID, functionID: UUID, near: CGPoint) {
         model.update("", requestID: requestID, functionID: functionID, phase: .streaming)
     }
-    func applyPopupTextSize(_ size: CGFloat) { model.fontSize = size }
+    func applyPopupTextSize(_ size: CGFloat) { model.fontSize = size; contentVisibilityChanged() }
     func applyPopupOpacity(_ opacity: CGFloat) { model.opacity = opacity }
     func applyStrings() { model.language = AppPreferences.language() }
     func refreshLayout() {
         guard let panel, panel.isVisible else { return }
+        manuallySized = false
         let visible = panel.screen?.visibleFrame ?? panel.frame
-        let size = CGSize(width: min(max(AppPreferences.popupMaxWidth(), 360), visible.width),
-                          height: min(max(AppPreferences.popupMaxHeight(), 280), visible.height))
+        let width = AppPreferences.popupAutomaticSize()
+            ? PopupSizing.preferredWidth(source: model.original, fontSize: model.fontSize, maximum: AppPreferences.popupMaxWidth())
+            : AppPreferences.popupMaxWidth()
+        let size = CGSize(width: min(max(width, 360), visible.width),
+                          height: min(AppPreferences.popupAutomaticSize() ? panel.frame.height : AppPreferences.popupMaxHeight(), visible.height))
         panel.setFrame(Self.frame(size: size, near: CGPoint(x: panel.frame.minX - 14, y: panel.frame.maxY + 14),
                                   visibleFrame: visible), display: true)
+        contentVisibilityChanged()
+    }
+
+    func windowWillStartLiveResize(_ notification: Notification) {
+        manuallySized = true
+        sizingTask?.cancel()
+        sizingTask = nil
+    }
+
+    func measureContent(_ metrics: PopupContentMetrics, requestID: UUID?) {
+        guard requestID == model.requestID, metrics.body > 0, metrics.toolbar > 0 else { return }
+        measuredHeight = metrics.body + metrics.toolbar + 1
+        scheduleContentFit()
+    }
+
+    func contentVisibilityChanged() {
+        allowShrink = true
+        scheduleContentFit()
+    }
+
+    private func scheduleContentFit() {
+        guard AppPreferences.popupAutomaticSize(), !manuallySized, sizingTask == nil else { return }
+        // Coalesce measurements without restarting the delay for every token.
+        sizingTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, let self else { return }
+            self.sizingTask = nil
+            guard let panel = self.panel, panel.isVisible, !panel.inLiveResize,
+                  self.measuredHeight > 0, !self.manuallySized, AppPreferences.popupAutomaticSize() else { return }
+            let visible = panel.screen?.visibleFrame ?? panel.frame
+            let target = PopupSizing.fittedFrame(current: panel.frame, contentHeight: self.measuredHeight,
+                maximumHeight: AppPreferences.popupMaxHeight(), screen: visible, edge: self.growthEdge,
+                growOnly: self.model.running && !self.allowShrink)
+            self.allowShrink = false
+            if abs(target.height - panel.frame.height) >= 2 || target.origin != panel.frame.origin {
+                panel.setFrame(target, display: true)
+            }
+        }
     }
 
     static func frame(size: CGSize, near point: CGPoint, visibleFrame: CGRect) -> CGRect {
@@ -72,7 +139,7 @@ final class SelectionPopup {
         onOpenPreferences?()
     }
     func stop() { onStop?(); model.stop() }
-    func dismiss() { stop(); model.requestID = nil; panel?.orderOut(nil) }
+    func dismiss() { stop(); sizingTask?.cancel(); sizingTask = nil; model.requestID = nil; panel?.orderOut(nil) }
     func retry() {
         guard let panel, !model.original.isEmpty else { return }
         onRetry?(model.original, CGPoint(x: panel.frame.minX, y: panel.frame.maxY))
@@ -105,7 +172,8 @@ final class SelectionPopup {
         window.hidesOnDeactivate = false
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.minSize = NSSize(width: 360, height: 280)
+        window.minSize = PopupSizing.minimum
+        window.delegate = self
         window.isOpaque = false
         window.backgroundColor = .clear
         window.contentView = PopupHostingView(rootView: ResultView(model: model, controller: self))
@@ -141,13 +209,18 @@ private struct ResultView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            toolbar.background(GeometryReader { geometry in
+                Color.clear.preference(key: PopupContentMetricsKey.self, value: PopupContentMetrics(toolbar: geometry.size.height))
+            })
             separator
             GeometryReader { viewport in
                 ScrollView(.vertical) {
                     readingContent
                         .padding(12)
                         .frame(width: viewport.size.width, alignment: .topLeading)
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: PopupContentMetricsKey.self, value: PopupContentMetrics(body: geometry.size.height))
+                        })
                         .background(PopupScrollStyle(
                             followsStreaming: model.sections.contains { $0.phase == .streaming },
                             requestID: model.requestID))
@@ -158,6 +231,8 @@ private struct ResultView: View {
         .foregroundStyle(DiggerTheme.ink).tint(DiggerTheme.accent)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .ignoresSafeArea(.container, edges: .top)
+        .onPreferenceChange(PopupContentMetricsKey.self) { controller.measureContent($0, requestID: model.requestID) }
+        .onChange(of: model.running) { _ in controller.contentVisibilityChanged() }
     }
 
     // The viewport owns the width. Incoming Markdown may change its ideal size,
@@ -204,8 +279,9 @@ private struct ResultView: View {
         HStack(spacing: 2) {
             if model.notice == nil {
                 Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { model.originalCollapsed.toggle() }
+                    withAnimation(reduceMotion || AppPreferences.popupAutomaticSize() ? nil : .easeInOut(duration: 0.16)) { model.originalCollapsed.toggle() }
                     AppPreferences.setPopupOriginalCollapsed(model.originalCollapsed)
+                    controller.contentVisibilityChanged()
                 } label: {
                     HStack(spacing: 5) {
                         Text(UIStrings.Popup.originalTitle).fixedSize()
@@ -264,8 +340,9 @@ private struct ResultView: View {
             HStack(spacing: 6) {
                 Button {
                     guard let index = model.sections.firstIndex(where: { $0.id == section.id }) else { return }
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { model.sections[index].collapsed.toggle() }
+                    withAnimation(reduceMotion || AppPreferences.popupAutomaticSize() ? nil : .easeInOut(duration: 0.16)) { model.sections[index].collapsed.toggle() }
                     AppPreferences.setPopupFunctionCollapsed(section.id, isCollapsed: model.sections[index].collapsed)
+                    controller.contentVisibilityChanged()
                 } label: {
                     HStack(spacing: 5) {
                         Text(section.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
@@ -313,5 +390,19 @@ private struct PopupButtonStyle: ButtonStyle {
                         in: RoundedRectangle(cornerRadius: 5))
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.35)
+    }
+}
+
+struct PopupContentMetrics: Equatable {
+    var body: CGFloat = 0
+    var toolbar: CGFloat = 0
+}
+
+private struct PopupContentMetricsKey: PreferenceKey {
+    static let defaultValue = PopupContentMetrics()
+    static func reduce(value: inout PopupContentMetrics, nextValue: () -> PopupContentMetrics) {
+        let next = nextValue()
+        value.body += next.body
+        value.toolbar += next.toolbar
     }
 }

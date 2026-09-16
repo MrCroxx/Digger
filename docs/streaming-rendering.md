@@ -30,7 +30,12 @@ staggered presentation.
   when generation ends.
 - The outer native scroll view follows growth only while the reader is at the
   bottom. Scrolling up preserves the reading position; returning to the bottom
-  resumes following. Window width and height remain user-controlled.
+  resumes following. Automatic sizing chooses a reading width from the selection,
+  then keeps it steady while the measured content height grows (coalesced at 80 ms).
+  The window expands down or up from a fixed edge, within the configured maximum
+  and available screen space. Streaming never automatically shrinks it; completion,
+  explicit collapse, and font changes can. A manual resize suspends fitting until
+  the next selection or a sizing-setting change. Fixed-size mode remains available.
 
 Copying, cache storage, stale-request checks, and stop/retry never use repaired text.
 No web runtime, remote images, or new package dependencies are needed.
@@ -45,7 +50,8 @@ No web runtime, remote images, or new package dependencies are needed.
 The first command runs the Swift tests plus loopback transport/cache/cancellation
 checks. The second opens real native preview windows in three configurations and
 checks stable block positions, follow/pause/resume scrolling, horizontal overflow,
-final buffer draining, fixed window geometry, and user resizing. Both use synthetic
+final buffer draining, anchored growth, compact results, manual resizing, screen
+edges, collapse, and fixed-size mode. Both use synthetic
 content and do not call a provider. The preview can also be watched with:
 
 ```sh
