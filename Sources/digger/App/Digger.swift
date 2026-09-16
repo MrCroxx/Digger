@@ -4,6 +4,18 @@ import Foundation
 @main
 struct Digger {
     static func main() {
+        if ProcessInfo.processInfo.arguments.contains("--smoke-test") {
+            // Run before normal startup so packaging never changes preferences or requests permissions.
+            // Resolve the packaged resources explicitly; Bundle.module may fall back to the build tree.
+            guard let bundleURL = Bundle.main.url(forResource: "digger_digger", withExtension: "bundle"),
+                  let resources = Bundle(url: bundleURL),
+                  let iconURL = resources.url(forResource: "AppIcon", withExtension: "icns"),
+                  let icon = NSImage(contentsOf: iconURL), icon.isValid else {
+                fatalError("Packaged app resources are missing or resolved outside the app")
+            }
+            print("Digger packaged startup and resources passed.")
+            return
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") {
             PreviewMode.run()
