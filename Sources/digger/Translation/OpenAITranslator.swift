@@ -13,16 +13,22 @@ actor OpenAITranslator {
     }
 
     private let client: OpenAI
+    private let model: String
+    private let endpoint: String
+    private let thinkEffort: String
+    private let systemPrompt: String
+    private let cache: TranslationDiskCache
 
-    init?() {
-        guard let configuration = Self.configuration(
-            apiKey: AppPreferences.apiKey(),
-            endpoint: AppPreferences.endpointOrDefault()
-        ) else {
-            return nil
-        }
-
+    init?(apiKey: String = AppPreferences.apiKey(), endpoint: String = AppPreferences.endpointOrDefault(),
+          model: String = AppPreferences.model(), thinkEffort: String = AppPreferences.thinkEffort(),
+          systemPrompt: String = AppPreferences.systemPrompt(), cache: TranslationDiskCache = .shared) {
+        guard let configuration = Self.configuration(apiKey: apiKey, endpoint: endpoint) else { return nil }
         client = OpenAI(configuration: configuration)
+        self.model = model
+        self.endpoint = endpoint
+        self.thinkEffort = thinkEffort
+        self.systemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.cache = cache
     }
 
     static func testConnection(
@@ -36,7 +42,7 @@ actor OpenAITranslator {
             throw TestError.missingModel
         }
         guard let configuration = configuration(apiKey: apiKey, endpoint: endpoint) else {
-            throw TestError.missingApiKey
+            throw apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? TestError.missingApiKey : TestError.invalidEndpoint
         }
         let client = OpenAI(configuration: configuration)
         let reasoningEffort = reasoningEffort(thinkEffort)
@@ -50,39 +56,26 @@ actor OpenAITranslator {
         return result.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func configuration(apiKey: String, endpoint: String) -> OpenAI.Configuration? {
+    static func configuration(apiKey: String, endpoint: String) -> OpenAI.Configuration? {
         let token = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else {
             return nil
         }
 
-        var host = "api.openai.com"
-        var basePath = "/v1"
-        var port = 443
-        var scheme = "https"
-        let endpointText = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !endpointText.isEmpty,
-           let endpoint = URL(string: endpointText) {
-            if let endpointHost = endpoint.host {
-                host = endpointHost
-            }
-            if !endpoint.path.isEmpty {
-                basePath = endpoint.path
-            }
-            if let endpointScheme = endpoint.scheme {
-                scheme = endpointScheme
-            }
-            if let endpointPort = endpoint.port {
-                port = endpointPort
-            }
-        }
+        guard let parsed = URLComponents(string: AppPreferences.resolvedEndpoint(endpoint)),
+              let scheme = parsed.scheme, ["http", "https"].contains(scheme),
+              let host = parsed.host, !host.isEmpty,
+              parsed.user == nil, parsed.password == nil,
+              parsed.query == nil, parsed.fragment == nil else { return nil }
+        let basePath = parsed.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let port = parsed.port ?? (scheme == "http" ? 80 : 443)
 
         return OpenAI.Configuration(
             token: token,
             host: host,
             port: port,
             scheme: scheme,
-            basePath: basePath,
+            basePath: basePath.isEmpty ? "/v1" : "/" + basePath,
             parsingOptions: .relaxed
         )
     }
@@ -90,13 +83,16 @@ actor OpenAITranslator {
     private enum TestError: LocalizedError {
         case missingApiKey
         case missingModel
+        case invalidEndpoint
 
         var errorDescription: String? {
             switch self {
             case .missingApiKey:
-                return "OPENAI_API_KEY is not set"
+                return UIStrings.Preferences.apiTestMissingKey
             case .missingModel:
-                return "OPENAI_MODEL is not set"
+                return UIStrings.Preferences.apiTestMissingModel
+            case .invalidEndpoint:
+                return localized("Enter a valid HTTP or HTTPS API endpoint.", "请输入有效的 HTTP 或 HTTPS API 地址。", "有効な HTTP または HTTPS の API エンドポイントを入力してください。")
             }
         }
     }
@@ -122,12 +118,13 @@ actor OpenAITranslator {
         useCache: Bool = true
     ) async throws -> PromptResult {
         let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
-        if useCache, let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+        if useCache, let cachedOutput = await cache.cachedOutput(for: cacheKey) {
             return PromptResult(output: cachedOutput, isCacheHit: true)
         }
         let result = try await client.chats(query: query)
-        let output = result.choices.first?.message.content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        await TranslationDiskCache.shared.storeOutput(output, for: cacheKey)
+        let output = result.choices.first?.message.content ?? ""
+        try Task.checkCancellation()
+        await cache.storeOutput(output, for: cacheKey)
         return PromptResult(output: output, isCacheHit: false)
     }
 
@@ -142,7 +139,7 @@ actor OpenAITranslator {
         useCache: Bool = true
     ) async throws -> PromptStreamResult {
         let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
-        if useCache, let cachedOutput = await TranslationDiskCache.shared.cachedOutput(for: cacheKey) {
+        if useCache, let cachedOutput = await cache.cachedOutput(for: cacheKey) {
             return PromptStreamResult(
                 stream: Self.singleValueStream(output: cachedOutput),
                 isCacheHit: true
@@ -151,10 +148,11 @@ actor OpenAITranslator {
 
         let stream: AsyncThrowingStream<ChatStreamResult, Error> = client.chatsStream(query: query)
         let outputStream = AsyncThrowingStream<String, Error> { continuation in
-            Task {
+            let worker = Task {
                 var accumulatedOutput = ""
                 do {
                     for try await result in stream {
+                        try Task.checkCancellation()
                         for choice in result.choices {
                             if let delta = choice.delta.content, !delta.isEmpty {
                                 accumulatedOutput += delta
@@ -162,13 +160,14 @@ actor OpenAITranslator {
                             }
                         }
                     }
-                    let output = accumulatedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-                    await TranslationDiskCache.shared.storeOutput(output, for: cacheKey)
+                    try Task.checkCancellation()
+                    await cache.storeOutput(accumulatedOutput, for: cacheKey)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in worker.cancel() }
         }
         return PromptStreamResult(stream: outputStream, isCacheHit: false)
     }
@@ -177,16 +176,13 @@ actor OpenAITranslator {
         prompt: String,
         text: String
     ) -> (query: ChatQuery, cacheKey: TranslationDiskCache.RequestKey) {
-        let model = AppPreferences.model()
-        let endpoint = AppPreferences.endpointOrDefault()
-        let thinkEffort = AppPreferences.thinkEffort()
         let reasoningEffort = Self.reasoningEffort(thinkEffort)
-        let systemPrompt = AppPreferences.systemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectivePrompt = PromptTemplates.preservingMarkdown(prompt)
         var messages: [ChatQuery.ChatCompletionMessageParam] = []
         if !systemPrompt.isEmpty {
             messages.append(.system(.init(content: .textContent(systemPrompt))))
         }
-        messages.append(.system(.init(content: .textContent(prompt))))
+        messages.append(.system(.init(content: .textContent(effectivePrompt))))
         messages.append(.user(.init(content: .string(text))))
 
         let query = ChatQuery(
@@ -197,7 +193,7 @@ actor OpenAITranslator {
         )
         let cacheKey = TranslationDiskCache.makeRequestKey(
             input: text,
-            prompt: prompt,
+            prompt: effectivePrompt,
             systemPrompt: systemPrompt,
             model: model,
             endpoint: endpoint,

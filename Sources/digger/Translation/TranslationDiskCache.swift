@@ -39,7 +39,7 @@ actor TranslationDiskCache {
     private let decoder: JSONDecoder
     private let cacheDirectoryURL: URL
 
-    init() {
+    init(directory: URL? = nil) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .millisecondsSince1970
         self.encoder = encoder
@@ -48,7 +48,7 @@ actor TranslationDiskCache {
         decoder.dateDecodingStrategy = .millisecondsSince1970
         self.decoder = decoder
 
-        cacheDirectoryURL = Self.defaultCacheDirectoryURL()
+        cacheDirectoryURL = directory ?? Self.defaultCacheDirectoryURL()
     }
 
     static func makeRequestKey(

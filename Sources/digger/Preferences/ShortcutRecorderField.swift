@@ -10,6 +10,7 @@ final class ShortcutRecorderField: NSTextField {
         }
     }
     private var localMonitor: Any?
+    private var resignKeyObserver: NSObjectProtocol?
     private var isFocused: Bool = false {
         didSet {
             updateFocusAppearance()
@@ -81,6 +82,15 @@ final class ShortcutRecorderField: NSTextField {
         if localMonitor != nil {
             return
         }
+        NotificationCenter.default.post(name: KeyboardShortcut.recordingBegan, object: nil)
+        resignKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification,
+                                                                    object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.window?.makeFirstResponder(nil)
+                self?.stopMonitoring()
+                self?.isFocused = false
+            }
+        }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self, event.window == self.window else {
                 return event
@@ -93,9 +103,14 @@ final class ShortcutRecorderField: NSTextField {
     }
 
     private func stopMonitoring() {
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
         if let localMonitor {
             NSEvent.removeMonitor(localMonitor)
             self.localMonitor = nil
+            NotificationCenter.default.post(name: KeyboardShortcut.recordingEnded, object: nil)
         }
     }
 

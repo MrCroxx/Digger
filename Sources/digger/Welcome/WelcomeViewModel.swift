@@ -46,7 +46,7 @@ final class WelcomeViewModel: ObservableObject {
         timer = nil
     }
 
-    private func startPolling() {
+    func startPolling() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in

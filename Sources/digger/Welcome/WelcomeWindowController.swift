@@ -11,8 +11,8 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
     override init() {
         viewModel = WelcomeViewModel()
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 460),
-            styleMask: [.titled],
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
@@ -35,7 +35,6 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
 
@@ -49,6 +48,7 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        viewModel.startPolling()
         viewModel.refresh()
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -56,7 +56,7 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        viewModel.canStart
+        true
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -67,6 +67,7 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
         guard viewModel.canStart else {
             return
         }
+        onReady?()
         AppPreferences.setWelcomeCompleted(true)
         viewModel.stop()
         window.orderOut(nil)

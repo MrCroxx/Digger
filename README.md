@@ -1,149 +1,120 @@
 <div align="center">
-  <img src="Sources/digger/Resources/digger.png" width="112" alt="Digger app icon">
+  <img src="Sources/digger/Resources/digger.png" width="96" alt="Digger app icon">
   <h1>Digger</h1>
-  <p><strong>Turn selected text into useful AI answers without leaving your current app.</strong></p>
-  <p>A lightweight, customizable macOS menu bar assistant for translation, summarization, explanation, and more.</p>
+  <p><strong>Words, made clear.</strong></p>
+  <p>A native macOS assistant for translating, summarizing and exploring selected text.</p>
 </div>
 
-## What is Digger?
+Select text in another app and press **⌘E**. Digger runs enabled prompts in parallel and displays the answers in a floating window.
 
-Digger brings AI actions directly to the text you are reading. Select text in almost any macOS app, then force-click or press a configurable global shortcut. Digger reads the selection and opens a compact result window beside your cursor—no copying into a chat window and no context switching.
+![Digger's native result window](docs/images/native-popup.png)
 
-Each selection can run multiple prompts in parallel. The built-in Translation and Summary actions are only a starting point: add your own prompts for rewriting, proofreading, code explanation, terminology lookup, or any workflow supported by your model.
+## A native workspace
 
-<p align="center">
-  <img src="docs/images/digger-popup.png" width="900" alt="Digger showing translation and summary results for selected text">
-</p>
+The interface is built with **SwiftUI + AppKit**, with warm paper surfaces, brown accents, and automatic light/dark appearance. See the [redesign decision and validation notes](docs/native-redesign.md).
 
-## Highlights
+The app icon uses a cream serif `d` on a walnut brown tile. Run `swift scripts/app-icon.swift` to regenerate its PNG and all macOS icon sizes.
 
-- **Works where you read** — trigger Digger from selected text in browsers, editors, documents, and other macOS apps.
-- **Force click or keyboard shortcut** — use trackpad pressure or a customizable global shortcut (default: `Command + E`).
-- **Multiple results at once** — run every configured prompt concurrently and view the results in one popup.
-- **Fully customizable prompts** — edit the shared system prompt and create as many task-specific actions as you need.
-- **OpenAI-compatible APIs** — configure the endpoint, API key, model, and reasoning effort, including compatible third-party providers.
-- **Fast feedback** — stream responses as they arrive, or use non-streaming mode when preferred.
-- **Practical popup controls** — copy individual sections or the complete result, collapse sections, retry while bypassing the cache, open Preferences, select result text, and drag the popup anywhere.
-- **Local disk cache** — reuse identical results to reduce latency and API cost, with configurable size and expiration.
-- **Native macOS experience** — menu bar operation, launch at login, first-run permission guidance, and English, Simplified Chinese, and Japanese interfaces.
+- **Works where you read** — reads selections through macOS Accessibility; browser HTML is converted locally to Markdown to retain lists and links. Temporary clipboard copies restore the previous clipboard.
+- **Your prompts, in parallel** — translation starts enabled and summary disabled; enable, disable, add, edit or remove custom actions and edit a shared system prompt.
+- **Bring your model** — configure an OpenAI-compatible endpoint, API key, model and reasoning effort; test the connection from Settings.
+- **Stable streaming** — answers arrive in a scrollable window that stays in place. Resize, drag or pin it as needed.
+- **Readable results** — streaming Markdown with nested lists, tables, headings, quotes, links, selectable text and literal code blocks.
+- **Control the work** — stop a generation, retain partial answers, or retry while bypassing the cache. Closing the window cancels active work.
+- **Copy what you need** — source, individual results or all results; `⌘⇧C` copies results, `⌘⌥C` includes the source.
+- **Local cache** — configurable capacity and expiration, stored on this Mac.
+- **Mac essentials** — menu bar access, a configurable global shortcut, launch at login, permission guidance, English, 简体中文 and 日本語.
 
-## How it works
+Force Touch is no longer used. No trackpad configuration is required.
 
-1. Select a word, paragraph, or code snippet in the app you are using.
-2. Force-click the selection or press the configured shortcut.
-3. Digger sends the text to your configured API for each configured prompt.
-4. Results appear together in a popup near the cursor, ready to read or copy.
+## Get started
 
-For a single word, the built-in translation prompt produces a compact bilingual dictionary entry. Longer text is translated while preserving formatting, Markdown structure, placeholders, numbers, and proper nouns.
+Requirements: macOS 13+, an OpenAI-compatible API, Accessibility permission, and a Swift 6.2+ toolchain for building.
 
-## Make it yours
-
-Digger's behavior is configured from its menu bar Preferences. Changes are saved automatically.
-
-### Build your own AI actions
-
-The system prompt applies to every action. Custom prompts define what Digger should do with the selected text, and all configured actions run in parallel.
-
-<p align="center">
-  <img src="docs/images/digger-prompts-settings.png" width="800" alt="Digger custom prompt settings">
-</p>
-
-### Tune the popup
-
-Adjust the font size, opacity, tooltip delay, global shortcut, and maximum popup dimensions to fit your workflow.
-
-<p align="center">
-  <img src="docs/images/digger-popup-settings.png" width="800" alt="Digger popup appearance and shortcut settings">
-</p>
-
-### Bring your own model
-
-Point Digger at OpenAI or another OpenAI-compatible endpoint, choose a model and reasoning effort, then validate the configuration with **Test API**.
-
-<p align="center">
-  <img src="docs/images/digger-api-settings.png" width="800" alt="Digger OpenAI-compatible API settings">
-</p>
-
-## Getting started
-
-### Requirements
-
-- macOS 13 or later
-- A Force Touch trackpad for the force-click trigger (the keyboard shortcut works without one)
-- An API key for OpenAI or an OpenAI-compatible provider
-- Accessibility permission for reading selected text and listening for the global shortcut
-- Xcode 16+ or a Swift 6.2 toolchain when building from source
-
-### Build and run from source
-
-```bash
+```sh
 git clone https://github.com/mrcroxx/digger.git
 cd digger
-swift build
 swift run digger
 ```
 
-On first launch:
+1. Grant Digger Accessibility access in System Settings.
+2. Open **Settings → API**, enter the endpoint, API key and model, then test the connection.
+3. Select text in another app and press `⌘E`.
 
-1. Grant Digger Accessibility access when prompted.
-2. Open **Preferences → API** and enter your endpoint, API key, and model.
-3. Select **Test API** to verify the connection.
-4. Select text in another app and press `Command + E`, or use force click.
+Existing API settings, prompts and cache are retained when upgrading. If a newly built app is not recognized by macOS Accessibility, grant access to the new build and reopen it. Stable signing avoids repeated identity changes.
 
-If macOS does not pick up the new permission immediately, quit and reopen Digger after granting access.
+## Settings
 
-## Build a distributable app
+| Page | Controls |
+| --- | --- |
+| General | Language, streaming, launch at login |
+| Popup | Typography preview, font size, background opacity, shortcut, window dimensions |
+| Prompts | Shared system prompt, per-action enable switches and native multiline editors |
+| API | Endpoint, key, model, reasoning effort and connection test |
+| Cache | Capacity, expiration and cache directory |
 
-Create a release `.app` bundle and, by default, a DMG:
+Changes save automatically. Tooltips follow native macOS timing.
 
-```bash
-./scripts/build-app.sh
+## Build and validate
+
+```sh
+swift build
+swift test
+/usr/bin/python3 scripts/test-transport.py
+CREATE_DMG=0 ./scripts/build-app.sh
 ```
 
-Build defaults live in [`scripts/build-config.sh`](scripts/build-config.sh). The generated artifacts are:
+The app is written to `dist/Digger.app`. For a debuggable app bundle, use `BUILD_CONFIGURATION=debug CREATE_DMG=0 ./scripts/build-app.sh`. Quit the running app before replacing `/Applications/Digger.app` with the new bundle. Run `./scripts/build-app.sh` without `CREATE_DMG=0` to also create a DMG. Signing/notarization options are documented in the build script.
 
-- `dist/Digger.app`
-- `dist/Digger-<version>.dmg`
+The transport test starts a temporary loopback-only API with fixture text and a fake key. It validates streaming, cache, errors, request payloads and cancellation without contacting a provider.
 
-Signing and notarization are supported when the required Apple credentials are configured. Otherwise, Digger remains source-first and can be run with Swift Package Manager.
+GitHub Actions runs on pull requests and pushes to `main`: macOS 15 with Xcode 26.2 builds Debug, runs the local fixture tests, and packages a Release app into a DMG. CI verifies the image checksum, mounts it read-only, and checks the bundled app's signature and Applications shortcut. Each successful run uploads the installer as `Digger-DMG` for seven days. The app is ad-hoc signed for local use, not notarized; CI needs no API key or signing certificate.
 
-## Configuration reference
+To create the same DMG locally without Finder automation:
 
-| Area | Options |
-| --- | --- |
-| General | Interface language, streaming responses, start at login |
-| Popup | Font size, opacity, tooltip delay, global shortcut, maximum width and height |
-| Prompts | Shared system prompt and custom prompt actions |
-| Force Click | Enable/disable the force-click popup, pressure threshold, pressure delta, baseline window |
-| API | Endpoint, API key, model, reasoning effort, connection test |
-| Cache | Maximum disk usage, TTL, and quick access to the cache directory |
+```sh
+CREATE_DMG=1 USE_CREATE_DMG=0 CONFIGURE_DMG=0 GENERATE_DMG_BG=0 ./scripts/build-app.sh
+./scripts/verify-dmg.sh dist/Digger-*.dmg
+```
+
+Review the UI offline in a debug build:
+
+```sh
+swift run digger --preview
+swift run digger --preview --settings
+swift run digger --preview --welcome --dark
+```
+
+If a shortcut does not open the popup, stop Digger with `Ctrl+C` and check the current registration from the same terminal:
+
+```sh
+swift run digger --diagnose
+```
+
+The menu bar also shows the configured shortcut and its status. `--preview` intentionally does not register a global shortcut.
 
 ## Data and permissions
 
-Digger communicates directly with the API endpoint you configure. When an action runs, the selected text and its prompts are sent to that provider. Responses may be cached locally in `~/Library/Caches/digger/translation-cache`; cache capacity and TTL are configurable, and the directory can be opened from Preferences.
+Selected text and prompts are sent directly to the API endpoint you configure when you invoke Digger. API settings remain in local preferences. Responses may be cached in `~/Library/Caches/digger/translation-cache`. Digger does not log selected text or generated results.
 
-Accessibility access is required so Digger can read the current selection and listen for its global trigger. When it must use the clipboard as a fallback, Digger snapshots and restores the previous clipboard contents.
+Accessibility is used for reading the selection. The global shortcut is registered independently, so it can explain missing permissions. Digger does not require trackpad drivers or a browser runtime. Its Markdown renderer does not fetch remote images or execute HTML.
 
-## Project structure
+## Structure
 
 ```text
 Sources/digger/
-  App/            App bootstrap and menu wiring
-  Core/           Force-click monitoring
-  EventTap/       Global keyboard and mouse event handling
-  Selection/      Selected-text extraction and prompt execution
+  App/            Bootstrap, menus and offline debug preview
+  EventTap/       Global shortcut and outside-click observation
+  Selection/      Accessibility extraction and cancellable prompt execution
   Translation/    OpenAI-compatible client and local cache
-  Preferences/    Settings models and SwiftUI views
-  Welcome/        First-run setup and permissions
-  UI/             Menu bar and result popup UI
-  Resources/      App assets
-scripts/          Build, signing, and packaging scripts
-docs/             Design and implementation notes
+  Preferences/    Persisted settings and SwiftUI editor
+  Welcome/        Permission guidance
+  UI/             Design system, result state, Markdown and floating panel
+Tests/            State, geometry, Markdown, endpoint and transport regression tests
+scripts/          Local transport fixture, build and packaging
 ```
 
-## Contributing
-
-Issues and pull requests are welcome. For bugs, please include clear reproduction steps, expected and actual behavior, your macOS version, and relevant model or endpoint details. Never include API keys or other credentials in an issue.
+Older documents in `docs/` describe historical implementations; [native-redesign.md](docs/native-redesign.md) describes the current architecture.
 
 ## License
 

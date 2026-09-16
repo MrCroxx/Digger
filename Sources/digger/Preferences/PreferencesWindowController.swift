@@ -11,19 +11,18 @@ final class PreferencesWindowController: NSObject {
         onPopupOpacityChange: @escaping (CGFloat) -> Void,
         onPopupLayoutChange: @escaping () -> Void,
         onLanguageChange: @escaping () -> Void,
-        onForceClickSettingsChange: @escaping (Float, Float, TimeInterval) -> Void,
         onCustomFunctionsChange: @escaping () -> Void
     ) {
-        AppPreferences.clearCustomFunctionsOnceIfNeeded()
         viewModel = PreferencesViewModel()
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 460),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = UIStrings.Preferences.title
         window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 880, height: 620)
         window.center()
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -40,7 +39,6 @@ final class PreferencesWindowController: NSObject {
                 self?.window.title = UIStrings.Preferences.title
                 onLanguageChange()
             },
-            onForceClickSettingsChange: onForceClickSettingsChange,
             onCustomFunctionsChange: onCustomFunctionsChange
         )
         let hostingController = NSHostingController(rootView: rootView)

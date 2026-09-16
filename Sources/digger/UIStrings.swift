@@ -48,8 +48,6 @@ enum UIStrings {
         case preferencesTabGeneral
         case preferencesTabPopup
         case preferencesTabFunctions
-        case preferencesTabAdvanced
-        case preferencesForceClickPopupEnabledLabel
         case preferencesTabAPI
         case preferencesTabCache
         case preferencesPopupFontSizeLabel
@@ -101,9 +99,6 @@ enum UIStrings {
         case welcomeAccessibilityTitle
         case welcomeAccessibilityDescription
         case welcomeOpenAccessibilityButton
-        case welcomeLookupDataDetectorsTitle
-        case welcomeLookupDataDetectorsDescription
-        case welcomeOpenTrackpadButton
         case welcomeSkipNextTimeLabel
         case welcomeStartButton
         case welcomeStatusReady
@@ -147,8 +142,6 @@ enum UIStrings {
         static var tabGeneral: String { value(.preferencesTabGeneral) }
         static var tabPopup: String { value(.preferencesTabPopup) }
         static var tabFunctions: String { value(.preferencesTabFunctions) }
-        static var tabAdvanced: String { value(.preferencesTabAdvanced) }
-        static var forceClickPopupEnabledLabel: String { value(.preferencesForceClickPopupEnabledLabel) }
         static var tabAPI: String { value(.preferencesTabAPI) }
         static var tabCache: String { value(.preferencesTabCache) }
         static var popupFontSizeLabel: String { value(.preferencesPopupFontSizeLabel) }
@@ -207,9 +200,6 @@ enum UIStrings {
         static var accessibilityTitle: String { value(.welcomeAccessibilityTitle) }
         static var accessibilityDescription: String { value(.welcomeAccessibilityDescription) }
         static var openAccessibilityButton: String { value(.welcomeOpenAccessibilityButton) }
-        static var lookupDataDetectorsTitle: String { value(.welcomeLookupDataDetectorsTitle) }
-        static var lookupDataDetectorsDescription: String { value(.welcomeLookupDataDetectorsDescription) }
-        static var openTrackpadButton: String { value(.welcomeOpenTrackpadButton) }
         static var skipNextTimeLabel: String { value(.welcomeSkipNextTimeLabel) }
         static var startButton: String { value(.welcomeStartButton) }
         static var statusReady: String { value(.welcomeStatusReady) }
@@ -255,8 +245,6 @@ enum UIStrings {
             .preferencesTabGeneral: "General",
             .preferencesTabPopup: "Popup",
             .preferencesTabFunctions: "Prompts",
-            .preferencesTabAdvanced: "Force Click",
-            .preferencesForceClickPopupEnabledLabel: "Show Popup on Force Click",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "Cache",
             .preferencesPopupFontSizeLabel: "Popup Font Size",
@@ -268,7 +256,7 @@ enum UIStrings {
             .preferencesStreamingLabel: "Stream Output",
             .preferencesStartOnLoginLabel: "Start on Login",
             .preferencesCustomFunctionsTitle: "Custom Prompts",
-            .preferencesCustomFunctionsDescription: "Add prompts that apply to selected text.",
+            .preferencesCustomFunctionsDescription: "Only enabled prompts run on your next selection. Changes are saved automatically.",
             .preferencesSystemPromptTitle: "System Prompt",
             .preferencesSystemPromptDescription: "Applied to all prompts, including translation.",
             .preferencesSystemPromptPlaceholder: "Enter system prompt",
@@ -309,11 +297,8 @@ enum UIStrings {
             .welcomeAccessibilityTitle: "Accessibility",
             .welcomeAccessibilityDescription: "Allows Digger to read selected text and listen for shortcuts.",
             .welcomeOpenAccessibilityButton: "Open Accessibility Settings",
-            .welcomeLookupDataDetectorsTitle: "Turn Off Look Up & Data Detectors",
-            .welcomeLookupDataDetectorsDescription: "Turn off Look Up & Data Detectors in Trackpad settings.\nIt helps avoid conflicts with Digger.",
-            .welcomeOpenTrackpadButton: "Open Trackpad Settings",
-            .welcomeSkipNextTimeLabel: "Skip welcome next time when permissions are ready",
-            .welcomeStartButton: "Get Started",
+            .welcomeSkipNextTimeLabel: "Skip this window when permissions are ready",
+            .welcomeStartButton: "Done",
             .welcomeStatusReady: "All permissions are ready",
             .welcomeStatusMissing: "Permissions required"
         ],
@@ -347,8 +332,6 @@ enum UIStrings {
             .preferencesTabGeneral: "通用",
             .preferencesTabPopup: "弹窗",
             .preferencesTabFunctions: "提示语",
-            .preferencesTabAdvanced: "Force Click",
-            .preferencesForceClickPopupEnabledLabel: "Force Click 时显示弹窗",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "缓存",
             .preferencesPopupFontSizeLabel: "弹窗字号",
@@ -360,7 +343,7 @@ enum UIStrings {
             .preferencesStreamingLabel: "流式输出",
             .preferencesStartOnLoginLabel: "登录时启动",
             .preferencesCustomFunctionsTitle: "自定义提示语",
-            .preferencesCustomFunctionsDescription: "添加应用于选中文本的提示语。",
+            .preferencesCustomFunctionsDescription: "下次选词时仅运行已启用的 Prompt。修改会自动保存。",
             .preferencesSystemPromptTitle: "系统提示语",
             .preferencesSystemPromptDescription: "应用于所有提示语，包括翻译。",
             .preferencesSystemPromptPlaceholder: "输入系统提示语",
@@ -401,11 +384,8 @@ enum UIStrings {
             .welcomeAccessibilityTitle: "辅助功能",
             .welcomeAccessibilityDescription: "用于读取选中文本并监听快捷键。",
             .welcomeOpenAccessibilityButton: "打开辅助功能设置",
-            .welcomeLookupDataDetectorsTitle: "关闭“查询与数据检测器”",
-            .welcomeLookupDataDetectorsDescription: "请在触控板设置中关闭“查询与数据检测器”。\n这样可以避免与 Digger 冲突。",
-            .welcomeOpenTrackpadButton: "打开触控板设置",
-            .welcomeSkipNextTimeLabel: "下次权限已就绪时跳过欢迎页",
-            .welcomeStartButton: "开始使用",
+            .welcomeSkipNextTimeLabel: "权限就绪后不再显示此窗口",
+            .welcomeStartButton: "完成",
             .welcomeStatusReady: "权限已就绪",
             .welcomeStatusMissing: "需要授权"
         ],
@@ -439,8 +419,6 @@ enum UIStrings {
             .preferencesTabGeneral: "一般",
             .preferencesTabPopup: "ポップアップ",
             .preferencesTabFunctions: "プロンプト",
-            .preferencesTabAdvanced: "Force Click",
-            .preferencesForceClickPopupEnabledLabel: "Force Click でポップアップを表示",
             .preferencesTabAPI: "API",
             .preferencesTabCache: "キャッシュ",
             .preferencesPopupFontSizeLabel: "ポップアップの文字サイズ",
@@ -452,7 +430,7 @@ enum UIStrings {
             .preferencesStreamingLabel: "ストリーミング出力",
             .preferencesStartOnLoginLabel: "ログイン時に起動",
             .preferencesCustomFunctionsTitle: "カスタムプロンプト",
-            .preferencesCustomFunctionsDescription: "選択したテキストに適用するプロンプトを追加します。",
+            .preferencesCustomFunctionsDescription: "次の選択から有効なプロンプトのみ実行します。変更は自動保存されます。",
             .preferencesSystemPromptTitle: "システムプロンプト",
             .preferencesSystemPromptDescription: "翻訳を含むすべてのプロンプトに適用されます。",
             .preferencesSystemPromptPlaceholder: "システムプロンプトを入力",
@@ -493,11 +471,8 @@ enum UIStrings {
             .welcomeAccessibilityTitle: "アクセシビリティ",
             .welcomeAccessibilityDescription: "選択したテキストの取得とショートカットの検知に必要です。",
             .welcomeOpenAccessibilityButton: "アクセシビリティ設定を開く",
-            .welcomeLookupDataDetectorsTitle: "調べる & データ検出をオフにする",
-            .welcomeLookupDataDetectorsDescription: "トラックパッド設定で「調べる & データ検出」をオフにしてください。\nDigger との競合を避けるためです。",
-            .welcomeOpenTrackpadButton: "トラックパッド設定を開く",
-            .welcomeSkipNextTimeLabel: "次回、権限が揃っている場合はウェルカム画面をスキップ",
-            .welcomeStartButton: "開始する",
+            .welcomeSkipNextTimeLabel: "権限が揃ったらこの画面を表示しない",
+            .welcomeStartButton: "完了",
             .welcomeStatusReady: "権限は準備完了です",
             .welcomeStatusMissing: "権限が必要です"
         ]

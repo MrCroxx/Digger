@@ -3,6 +3,19 @@ import Carbon
 import Foundation
 
 struct KeyboardShortcut: Equatable {
+    static let didChange = Notification.Name("DiggerShortcutDidChange")
+    static let recordingBegan = Notification.Name("DiggerShortcutRecordingBegan")
+    static let recordingEnded = Notification.Name("DiggerShortcutRecordingEnded")
+
+    var carbonModifiers: UInt32 {
+        var value: UInt32 = 0
+        if modifiers.contains(.maskCommand) { value |= UInt32(cmdKey) }
+        if modifiers.contains(.maskControl) { value |= UInt32(controlKey) }
+        if modifiers.contains(.maskAlternate) { value |= UInt32(optionKey) }
+        if modifiers.contains(.maskShift) { value |= UInt32(shiftKey) }
+        return value
+    }
+
     static let relevantModifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
 
     let keyCode: CGKeyCode

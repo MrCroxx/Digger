@@ -8,7 +8,12 @@ if [[ -f "$CONFIG_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$CONFIG_FILE"
 fi
-BUILD_DIR="$ROOT_DIR/.build/release"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
+if [[ "$BUILD_CONFIGURATION" != "debug" && "$BUILD_CONFIGURATION" != "release" ]]; then
+  echo "BUILD_CONFIGURATION must be debug or release"
+  exit 1
+fi
+BUILD_DIR="$ROOT_DIR/.build/$BUILD_CONFIGURATION"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
 APP_NAME="${APP_NAME:-Digger}"
@@ -32,11 +37,11 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 
-echo "Building release binary..."
-swift build -c release
+echo "Building $BUILD_CONFIGURATION binary..."
+swift build -c "$BUILD_CONFIGURATION"
 
 if [[ ! -f "$BUILD_DIR/digger" ]]; then
-  echo "Release binary not found at $BUILD_DIR/digger"
+  echo "Binary not found at $BUILD_DIR/digger"
   exit 1
 fi
 
@@ -45,13 +50,6 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 cp "$BUILD_DIR/digger" "$MACOS_DIR/$APP_NAME"
-
-echo "Embedding frameworks..."
-for framework in "$BUILD_DIR"/*.framework; do
-  if [[ -e "$framework" ]]; then
-    cp -R "$framework" "$FRAMEWORKS_DIR"
-  fi
-done
 
 if command -v install_name_tool >/dev/null; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME" || true
@@ -96,11 +94,59 @@ EOF
 
 echo "App bundle created at: $APP_DIR"
 
+# Sign (and optionally notarize) before copying the app into the disk image.
+if [[ -n "$SIGN_IDENTITY" ]]; then
+  if ! command -v codesign >/dev/null; then
+    echo "codesign not found; skipping signing"
+    exit 1
+  fi
+
+  echo "Signing app with identity: $SIGN_IDENTITY"
+
+  if [[ -d "$FRAMEWORKS_DIR" ]]; then
+    for framework in "$FRAMEWORKS_DIR"/*.framework; do
+      if [[ -e "$framework" ]]; then
+        codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$framework"
+      fi
+    done
+  fi
+
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
+  codesign --verify --strict --verbose=2 "$APP_DIR"
+  echo "Signing complete"
+else
+  echo "No Apple signing identity configured; signing for local use only"
+  codesign --force --sign - "$APP_DIR"
+  codesign --verify --strict "$APP_DIR"
+fi
+
+if [[ "$NOTARIZE" == "1" ]]; then
+  if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "NOTARY_PROFILE not set; cannot notarize"
+    exit 1
+  fi
+  if ! command -v xcrun >/dev/null; then
+    echo "xcrun not found; cannot notarize"
+    exit 1
+  fi
+
+  ZIP_PATH="$OUTPUT_DIR/$APP_NAME.zip"
+  echo "Notarizing app with profile: $NOTARY_PROFILE"
+  rm -f "$ZIP_PATH"
+  ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+  xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$APP_DIR"
+  spctl -a -vv "$APP_DIR"
+  echo "Notarization complete"
+fi
+
 if [[ "$CREATE_DMG" == "1" ]]; then
   if ! command -v hdiutil >/dev/null; then
-    echo "hdiutil not found; skipping DMG creation"
-  elif ! command -v osascript >/dev/null; then
-    echo "osascript not found; skipping DMG creation"
+    echo "hdiutil not found; cannot create DMG"
+    exit 1
+  elif [[ "$CONFIGURE_DMG" == "1" ]] && ! command -v osascript >/dev/null; then
+    echo "osascript not found; cannot configure DMG layout"
+    exit 1
   else
     DMG_NAME="$APP_NAME-$VERSION"
     DMG_TEMP_PATH="$OUTPUT_DIR/$DMG_NAME-temp.dmg"
@@ -231,47 +277,4 @@ EOF
       echo "DMG created at: $DMG_PATH"
     fi
   fi
-fi
-
-if [[ -n "$SIGN_IDENTITY" ]]; then
-  if ! command -v codesign >/dev/null; then
-    echo "codesign not found; skipping signing"
-    exit 1
-  fi
-
-  echo "Signing app with identity: $SIGN_IDENTITY"
-
-  if [[ -d "$FRAMEWORKS_DIR" ]]; then
-    for framework in "$FRAMEWORKS_DIR"/*.framework; do
-      if [[ -e "$framework" ]]; then
-        codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$framework"
-      fi
-    done
-  fi
-
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
-  codesign --verify --strict --verbose=2 "$APP_DIR"
-  echo "Signing complete"
-else
-  echo "SIGN_IDENTITY not set; app bundle is unsigned"
-fi
-
-if [[ "$NOTARIZE" == "1" ]]; then
-  if [[ -z "$NOTARY_PROFILE" ]]; then
-    echo "NOTARY_PROFILE not set; cannot notarize"
-    exit 1
-  fi
-  if ! command -v xcrun >/dev/null; then
-    echo "xcrun not found; cannot notarize"
-    exit 1
-  fi
-
-  ZIP_PATH="$OUTPUT_DIR/$APP_NAME.zip"
-  echo "Notarizing app with profile: $NOTARY_PROFILE"
-  rm -f "$ZIP_PATH"
-  ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
-  xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
-  xcrun stapler staple "$APP_DIR"
-  spctl -a -vv "$APP_DIR"
-  echo "Notarization complete"
 fi
