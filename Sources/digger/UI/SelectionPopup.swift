@@ -102,6 +102,14 @@ final class SelectionPopup: NSObject, NSWindowDelegate {
         scheduleContentFit()
     }
 
+    var canGrowToFitContent: Bool {
+        guard AppPreferences.popupAutomaticSize(), !manuallySized, let panel, !panel.inLiveResize else { return false }
+        let visible = panel.screen?.visibleFrame ?? panel.frame
+        let largest = PopupSizing.fittedFrame(current: panel.frame, contentHeight: .greatestFiniteMagnitude,
+            maximumHeight: AppPreferences.popupMaxHeight(), screen: visible, edge: growthEdge, growOnly: true)
+        return largest.height - panel.frame.height >= 2
+    }
+
     private func scheduleContentFit() {
         guard AppPreferences.popupAutomaticSize(), !manuallySized, sizingTask == nil else { return }
         // Coalesce measurements without restarting the delay for every token.
@@ -223,7 +231,8 @@ private struct ResultView: View {
                         })
                         .background(PopupScrollStyle(
                             followsStreaming: model.sections.contains { $0.phase == .streaming },
-                            requestID: model.requestID))
+                            requestID: model.requestID,
+                            defersFollowing: { controller.canGrowToFitContent }))
                 }
             }
         }

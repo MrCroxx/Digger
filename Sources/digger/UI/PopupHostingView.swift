@@ -20,9 +20,10 @@ final class PopupHostingView<Content: View>: NSHostingView<Content> {
 struct PopupScrollStyle: NSViewRepresentable {
     var followsStreaming = false
     var requestID: UUID?
+    var defersFollowing: () -> Bool = { false }
     func makeNSView(context: Context) -> Marker { Marker() }
     func updateNSView(_ view: Marker, context: Context) {
-        view.update(followsStreaming: followsStreaming, requestID: requestID)
+        view.update(followsStreaming: followsStreaming, requestID: requestID, defersFollowing: defersFollowing)
     }
 
     final class Marker: NSView {
@@ -34,11 +35,14 @@ struct PopupScrollStyle: NSViewRepresentable {
         private var requestID: UUID?
         private var previousHeight: CGFloat = 0
         private var previousOrigin: CGFloat = 0
+        private var previousViewportSize: CGSize = .zero
         private var adjustingScroll = false
+        private var defersFollowing: () -> Bool = { false }
 
         deinit { NotificationCenter.default.removeObserver(self) }
 
-        func update(followsStreaming: Bool, requestID: UUID?) {
+        func update(followsStreaming: Bool, requestID: UUID?, defersFollowing: @escaping () -> Bool) {
+            self.defersFollowing = defersFollowing
             if self.followsStreaming && !followsStreaming { followFinalLayout = true }
             self.followsStreaming = followsStreaming
             if self.requestID != requestID {
@@ -61,12 +65,16 @@ struct PopupScrollStyle: NSViewRepresentable {
                 if let document = scrollView.documentView {
                     previousHeight = document.frame.height
                     previousOrigin = scrollView.contentView.bounds.minY
+                    previousViewportSize = scrollView.contentView.bounds.size
                     document.postsFrameChangedNotifications = true
                     scrollView.contentView.postsBoundsChangedNotifications = true
+                    scrollView.contentView.postsFrameChangedNotifications = true
                     NotificationCenter.default.addObserver(self, selector: #selector(documentResized),
                         name: NSView.frameDidChangeNotification, object: document)
                     NotificationCenter.default.addObserver(self, selector: #selector(viewportScrolled),
                         name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+                    NotificationCenter.default.addObserver(self, selector: #selector(viewportResized),
+                        name: NSView.frameDidChangeNotification, object: scrollView.contentView)
                 }
                 // SwiftUI/AppKit may restore the preferred style after insertion.
                 // Keep that change from temporarily consuming viewport width.
@@ -89,7 +97,8 @@ struct PopupScrollStyle: NSViewRepresentable {
                   let document = scroll.documentView else { return }
             // Layout can move the clip view before announcing a new document frame.
             // Only a scroll within the same geometry changes the user's follow intent.
-            guard abs(document.frame.height - previousHeight) < 0.5 else { return }
+            guard abs(document.frame.height - previousHeight) < 0.5,
+                  scroll.contentView.bounds.size == previousViewportSize else { return }
             let bounds = scroll.contentView.bounds
             followsBottom = document.frame.height - bounds.maxY <= 24
             previousOrigin = bounds.minY
@@ -100,10 +109,28 @@ struct PopupScrollStyle: NSViewRepresentable {
                   let document = scroll.documentView else { return }
             let height = document.frame.height
             guard abs(height - previousHeight) >= 0.5 else { return }
-            let bottom = max(0, height - scroll.contentView.bounds.height)
-            let target = (followsStreaming || followFinalLayout) && followsBottom ? bottom : min(previousOrigin, bottom)
-            followFinalLayout = false
             previousHeight = height
+            // The adaptive panel fits on a coalesced clock. Following now would
+            // scroll the text up, then back down when the viewport catches up.
+            synchronizeScroll(deferFollowing: defersFollowing())
+        }
+
+        @objc private func viewportResized() {
+            guard let scroll = observedScrollView,
+                  scroll.contentView.bounds.size != previousViewportSize else { return }
+            previousViewportSize = scroll.contentView.bounds.size
+            // Also handles the transition to the height cap: the remaining
+            // overflow can now follow the bottom using the fitted viewport.
+            synchronizeScroll(deferFollowing: false)
+        }
+
+        private func synchronizeScroll(deferFollowing: Bool) {
+            guard requestID != nil, !adjustingScroll, let scroll = observedScrollView,
+                  let document = scroll.documentView else { return }
+            let bottom = max(0, document.frame.height - scroll.contentView.bounds.height)
+            let follow = (followsStreaming || followFinalLayout) && followsBottom && !deferFollowing
+            let target = follow ? bottom : min(previousOrigin, bottom)
+            if !deferFollowing { followFinalLayout = false }
             adjustingScroll = true
             scroll.contentView.scroll(to: NSPoint(x: 0, y: target))
             scroll.reflectScrolledClipView(scroll.contentView)
