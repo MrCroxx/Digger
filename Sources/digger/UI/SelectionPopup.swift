@@ -36,7 +36,7 @@ final class SelectionPopup {
 
     func updateResult(_ text: String, for requestID: UUID, functionID: UUID, near: CGPoint,
                       isFinal: Bool, isCacheHit: Bool, isError: Bool = false) {
-        model.update(text, requestID: requestID, functionID: functionID,
+        model.receive(text, requestID: requestID, functionID: functionID,
                      phase: isError ? .failed : (isFinal ? .complete : .streaming), cached: isCacheHit)
     }
 
@@ -148,7 +148,9 @@ private struct ResultView: View {
                     readingContent
                         .padding(12)
                         .frame(width: viewport.size.width, alignment: .topLeading)
-                        .background(PopupScrollStyle())
+                        .background(PopupScrollStyle(
+                            followsStreaming: model.sections.contains { $0.phase == .streaming },
+                            requestID: model.requestID))
                 }
             }
         }
@@ -286,7 +288,7 @@ private struct ResultView: View {
             }
             if !section.collapsed {
                 if !section.text.isEmpty {
-                    MarkdownContent(content: section.markdown, fontSize: model.fontSize)
+                    StreamingMarkdownContent(blocks: section.blocks, fontSize: model.fontSize)
                 }
                 if section.phase == .failed {
                     Button(UIStrings.Popup.retry) { controller.retry() }.buttonStyle(.bordered).controlSize(.small)

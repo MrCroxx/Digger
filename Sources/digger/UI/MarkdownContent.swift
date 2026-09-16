@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Native GFM rendering. The model parses each published stream snapshot once;
 /// pinning, copying, or updates to another action do not reparse unchanged text.
-struct MarkdownContent: View {
+struct MarkdownContent: View, @MainActor Equatable {
     let content: MarkdownUI.MarkdownContent
     let fontSize: CGFloat
 
@@ -101,6 +101,36 @@ struct MarkdownContent: View {
             .markdownMargin(top: 8, bottom: 6)
     }
 }
+
+/// Each top-level block has a stable slot and owns its spacing. MarkdownUI's
+/// content-hashed internal sequence can no longer reset the gaps above the tail.
+struct StreamingMarkdownContent: View {
+    let blocks: [PopupMarkdown.Block]
+    let fontSize: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(blocks) { block in
+                MarkdownContent(content: block.content, fontSize: fontSize).equatable()
+                    #if DEBUG
+                    .background(StreamBlockProbe(index: block.id))
+                    #endif
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transaction { $0.animation = nil }
+    }
+}
+
+#if DEBUG
+private struct StreamBlockProbe: NSViewRepresentable {
+    let index: Int
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ view: NSView, context: Context) {
+        view.identifier = NSUserInterfaceItemIdentifier("stream-block-\(index)")
+    }
+}
+#endif
 
 // Preserve the existing local rendering behavior: image references remain in copied
 // Markdown, but displaying a selection never fetches external images in the background.
