@@ -21,84 +21,129 @@ struct MarkdownContent: View, @MainActor Equatable {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private static let compactTheme = Theme.basic
-        .link { ForegroundColor(DiggerTheme.accent) }
-        .code {
-            FontFamilyVariant(.monospaced)
-            FontSize(.em(0.94))
-            BackgroundColor(DiggerTheme.canvas)
-        }
-        .heading1 { heading($0, scale: 1.3) }
-        .heading2 { heading($0, scale: 1.2) }
-        .heading3 { heading($0, scale: 1.1) }
-        .heading4 { heading($0, scale: 1) }
-        .heading5 { heading($0, scale: 1) }
-        .heading6 { heading($0, scale: 1) }
-        .paragraph { configuration in
-            configuration.label
-                .fixedSize(horizontal: false, vertical: true)
-                .relativeLineSpacing(.em(0.2))
-                .markdownMargin(top: 0, bottom: 8)
-        }
-        .listItem { configuration in
-            configuration.label.markdownMargin(top: 2, bottom: 2)
-        }
-        .blockquote { configuration in
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 2).fill(DiggerTheme.accent).frame(width: 3)
-                configuration.label.markdownTextStyle { ForegroundColor(DiggerTheme.muted) }
+    private static let compactTheme = makeCompactTheme()
+
+    // Build in the view's main-actor context so Swift 6.4 can resolve the
+    // opaque View/TextStyle conformances inside MarkdownUI's builder closures.
+    private static func makeCompactTheme() -> Theme {
+        Theme.basic
+            .link { ForegroundColor(DiggerTheme.accent) }
+            .code {
+                FontFamilyVariant(.monospaced)
+                FontSize(.em(0.94))
+                BackgroundColor(DiggerTheme.canvas)
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .markdownMargin(top: 0, bottom: 8)
-        }
-        .codeBlock { configuration in
-            VStack(alignment: .leading, spacing: 4) {
-                if let language = configuration.language, !language.isEmpty {
-                    Text(language).font(.system(size: 10)).foregroundStyle(DiggerTheme.muted)
-                        .padding(.horizontal, 8).padding(.top, 6)
-                }
-                ScrollView(.horizontal) {
-                    configuration.label
-                        .markdownTextStyle {
-                            FontFamilyVariant(.monospaced)
-                            FontSize(.em(0.94))
-                            BackgroundColor(nil)
-                        }
-                        .fixedSize(horizontal: true, vertical: true)
-                        .padding(8)
-                        .background(PopupScrollStyle())
-                }
-            }
-            .background(DiggerTheme.canvas, in: RoundedRectangle(cornerRadius: 6))
-            .markdownMargin(top: 0, bottom: 8)
-        }
-        .table { configuration in
-            ScrollView(.horizontal) {
+            .heading1 { heading($0, scale: 1.3) }
+            .heading2 { heading($0, scale: 1.2) }
+            .heading3 { heading($0, scale: 1.1) }
+            .heading4 { heading($0, scale: 1) }
+            .heading5 { heading($0, scale: 1) }
+            .heading6 { heading($0, scale: 1) }
+            .paragraph { configuration in
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
-                    .markdownTableBorderStyle(.init(color: DiggerTheme.line))
-                    .markdownTableBackgroundStyle(.alternatingRows(DiggerTheme.paper, DiggerTheme.canvas))
-                    .background(PopupScrollStyle())
+                    .relativeLineSpacing(.em(0.2))
+                    .markdownMargin(top: 0, bottom: 8)
             }
-            .markdownMargin(top: 0, bottom: 8)
-        }
-        .tableCell { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    if configuration.row == 0 { FontWeight(.semibold) }
+            .listItem { configuration in
+                configuration.label.markdownMargin(top: 2, bottom: 2)
+            }
+            .blockquote { configuration in
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 2).fill(DiggerTheme.accent).frame(width: 3)
+                    configuration.label.markdownTextStyle { ForegroundColor(DiggerTheme.muted) }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8).padding(.vertical, 5)
-        }
-        .thematicBreak {
-            Rectangle().fill(DiggerTheme.line).frame(height: 1)
-                .markdownMargin(top: 8, bottom: 8)
-        }
+                .markdownMargin(top: 0, bottom: 8)
+            }
+            .codeBlock { configuration in
+                PopupCodeBlock(configuration: configuration)
+                    .markdownMargin(top: 0, bottom: 8)
+            }
+            .table { configuration in
+                ScrollView(.horizontal) {
+                    configuration.label
+                        .fixedSize(horizontal: false, vertical: true)
+                        .markdownTableBorderStyle(.init(color: DiggerTheme.line))
+                        .markdownTableBackgroundStyle(.alternatingRows(DiggerTheme.paper, DiggerTheme.canvas))
+                        .background(PopupScrollStyle())
+                }
+                .markdownMargin(top: 0, bottom: 8)
+            }
+            .tableCell { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        if configuration.row == 0 { FontWeight(.semibold) }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+            }
+            .thematicBreak {
+                Rectangle().fill(DiggerTheme.line).frame(height: 1)
+                    .markdownMargin(top: 8, bottom: 8)
+            }
+    }
 
     private static func heading(_ configuration: BlockConfiguration, scale: CGFloat) -> some View {
         configuration.label
             .markdownTextStyle { FontWeight(.semibold); FontSize(.em(scale)) }
             .markdownMargin(top: 8, bottom: 6)
+    }
+}
+
+/// Wrap at the available reading width without modifying the copied Markdown.
+/// Original line widths remain available for code or diagrams that need alignment.
+private struct PopupCodeBlock: View {
+    let configuration: CodeBlockConfiguration
+    @State private var wrapsLines = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                if let language = configuration.language, !language.isEmpty {
+                    Text(language)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    wrapsLines.toggle()
+                } label: {
+                    Label(wrapsLines
+                          ? localized("Original line width", "原始行宽", "元の行幅")
+                          : localized("Wrap lines", "自动换行", "折り返す"),
+                          systemImage: wrapsLines ? "arrow.left.and.right" : "arrow.turn.down.left")
+                }
+                .buttonStyle(.plain)
+                .help(localized("Switch between wrapped text and original line widths",
+                                "切换自动换行和原始行宽", "折り返しと元の行幅を切り替える"))
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(DiggerTheme.muted)
+            .padding(.horizontal, 8).padding(.top, 6)
+
+            if wrapsLines {
+                code
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            } else {
+                ScrollView(.horizontal) {
+                    code
+                        .fixedSize(horizontal: true, vertical: true)
+                        .padding(8)
+                        .background(PopupScrollStyle())
+                }
+            }
+        }
+        .background(DiggerTheme.canvas, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var code: some View {
+        configuration.label
+            .markdownTextStyle {
+                FontFamilyVariant(.monospaced)
+                FontSize(.em(0.94))
+                BackgroundColor(nil)
+            }
     }
 }
 
