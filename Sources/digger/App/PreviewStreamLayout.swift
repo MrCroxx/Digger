@@ -46,7 +46,8 @@ enum PreviewStreamLayout {
         verify(window)
         let nested = document.subviews.flatMap { scrollViews(in: $0) }
         let wide = nested.filter { ($0.documentView?.frame.width ?? 0) > $0.contentView.bounds.width + 20 }
-        assert(wide.count >= 2, "Wide table and code must retain horizontal scrolling")
+        // Code blocks now wrap by default; wide tables still scroll horizontally.
+        assert(!wide.isEmpty, "Wide tables must retain horizontal scrolling")
         for inner in wide {
             assert(inner.scrollerStyle == .overlay)
             inner.contentView.scroll(to: NSPoint(x: 20, y: 0))
