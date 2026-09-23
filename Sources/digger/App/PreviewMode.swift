@@ -33,6 +33,8 @@ enum PreviewMode {
         AppPreferences.defaults.removePersistentDomain(forName: "com.mrcroxx.digger.preview.preferences")
         let args = ProcessInfo.processInfo.arguments
         AppPreferences.setLanguage(args.contains("--english") ? .english : (args.contains("--japanese") ? .japanese : .chineseSimplified))
+        if args.contains("--showcase") { PreviewShowcase.configure() }
+        if args.contains("--light") { app.appearance = NSAppearance(named: .aqua) }
         if args.contains("--dark") { app.appearance = NSAppearance(named: .darkAqua) }
         if args.contains("--small") {
             AppPreferences.setPopupMaxWidth(360)
@@ -58,6 +60,10 @@ enum PreviewMode {
                              PopupFunction(id: UUID(), title: "摘要", prompt: "", isTranslation: false)]
             let frame = NSScreen.main?.visibleFrame ?? .zero
             let anchor = CGPoint(x: frame.midX - AppPreferences.popupMaxWidth() / 2 - 14, y: frame.midY + AppPreferences.popupMaxHeight() / 2 + 14)
+            if args.contains("--showcase") {
+                PreviewShowcase.show(near: anchor, code: args.contains("--showcase-code"))
+                return
+            }
             let htmlPathIndex = args.firstIndex(of: "--html")
             let htmlPath = htmlPathIndex.flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
             let html = htmlPath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
@@ -134,7 +140,13 @@ enum PreviewMode {
         }
         selectionPopup.onRetry = { _, _ in showFixture() }
         if ProcessInfo.processInfo.arguments.contains("--welcome") { welcome.show() }
-        else if ProcessInfo.processInfo.arguments.contains("--settings") { preferences.show() }
+        else if ProcessInfo.processInfo.arguments.contains("--settings") {
+            preferences.show()
+            if args.contains("--showcase") {
+                app.windows.first(where: { $0.isVisible && $0.title == UIStrings.Preferences.title })?
+                    .setContentSize(NSSize(width: 980, height: 760))
+            }
+        }
         else if args.contains("--verify-autosize") { Task { await PreviewPopupSizing.run() } }
         else { showFixture() }
         if let index = args.firstIndex(of: "--render"), args.indices.contains(index + 1) {

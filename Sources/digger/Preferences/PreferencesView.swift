@@ -71,7 +71,16 @@ struct PreferencesView: View {
     let onLanguageChange: () -> Void
     let onCustomFunctionsChange: () -> Void
 
-    @State private var selection: PreferencesTab? = .general
+    @State private var selection: PreferencesTab? = {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--preview"), let index = args.firstIndex(of: "--settings-tab"),
+           args.indices.contains(index + 1), let tab = PreferencesTab(rawValue: args[index + 1]) {
+            return tab
+        }
+        #endif
+        return .general
+    }()
     @FocusState private var focusedField: Field?
     @State private var lastFocusedField: Field?
     @State private var promptEditorTarget: PromptEditorTarget?
