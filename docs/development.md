@@ -6,8 +6,22 @@ SwiftUI and AppKit; the package is defined in [Package.swift](../Package.swift).
 ## Run locally
 
 ```bash
-swift run digger
+make dev      # Build and open dist/Digger.app in Debug
+make build    # Build the Debug app without opening it
+make release  # Run checks and package the Release app, DMG, and ZIP
+make test     # Run Swift tests
 ```
+
+`make dmg` is an alias for `make release`; `make` lists the available targets.
+Debug and Release both use `dist/Digger.app`, so the latest build replaces that
+bundle. Quit the running Digger before switching builds. For a terminal-only
+Debug run, `swift run digger` remains available.
+
+Make selects the only code-signing identity in Keychain automatically. With no
+identity it falls back to ad-hoc signing; with several identities it asks you to
+choose, for example `make dev SIGN_IDENTITY="Digger Local Signing"`.
+Use `make release DIGGER_MAC_UNSIGNED=1` to explicitly select ad-hoc signing.
+The underlying scripts retain their explicit signing configuration by default.
 
 Configure a provider in Settings and grant Accessibility permission to the
 build you are running. Existing API settings, prompts, and cache are retained

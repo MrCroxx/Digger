@@ -24,6 +24,10 @@ selection to macOS. Press **⌘E** to bring the answers alongside your work.
 Enabled prompts run in parallel, so a translation and a short summary can
 arrive together.
 
+With no text selected, the same shortcut opens a dimmed region picker. Drag to
+translate a screenshot, or press Esc to cancel. Screenshot translation requires
+Screen Recording permission and a model that accepts image input.
+
 Expand the original to compare it with the results, collapse a section to
 make room, or pin the window while you read. Copy one answer, all answers,
 or the answers together with the source.
@@ -129,8 +133,8 @@ workflow, and enable launch at login if you want Digger ready after signing in.
 
 ### Your data and your provider
 
-When you invoke Digger, selected text and prompts are sent directly to the
-API endpoint you configure. Local caching does not make AI generation offline.
+When you invoke Digger, selected text or the captured region, along with your
+prompts, is sent directly to the API endpoint you configure. Local caching does not make AI generation offline.
 Settings, including the API key, are stored in macOS preferences on this Mac;
 the key is currently stored in **UserDefaults**, not Keychain.
 
@@ -146,18 +150,23 @@ Requires a **Swift 6.2+ toolchain** on macOS. From a checkout:
 ```bash
 git clone https://github.com/mrcroxx/digger.git
 cd digger
-swift run digger
+make dev
 ```
+
+`make dev` builds and opens the Debug app; `make build` only builds Debug;
+`make test` runs the Swift tests.
 
 Build an installer:
 
 ```bash
-DIGGER_MAC_UNSIGNED=1 ./scripts/package-desktop.sh
+make release
 ```
 
 This runs the packaging checks and tests, then creates `dist/Digger.app`,
 a DMG, and a ZIP for the build Mac's architecture. Packaging does not install
-the app. Use a stable signing identity for a regular local installation;
+the app. Make selects the only code-signing certificate in Keychain, falls back
+to ad-hoc signing when none exists, and requires `SIGN_IDENTITY` when several exist.
+Use `make release DIGGER_MAC_UNSIGNED=1` for explicit ad-hoc signing;
 see the [development guide](docs/development.md).
 
 Explore the interface with offline example content, or regenerate the screenshots:

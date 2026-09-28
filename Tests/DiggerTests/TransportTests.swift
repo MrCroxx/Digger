@@ -41,6 +41,30 @@ struct TransportTests {
         #expect(next.output == first.output)
     }
 
+    @Test func imageRequestsStreamRetryAndCacheByImageContents() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let client = try translator(model: "vision")
+        let image = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9l8AAAAASUVORK5CYII=")!
+        let oldKey = TranslationDiskCache.makeRequestKey(input: "Screenshot", imagePNG: image,
+            prompt: PromptTemplates.preservingMarkdown("Fixture prompt"), systemPrompt: "Fixture system",
+            model: "vision", endpoint: endpoint, thinkEffort: "")
+        await TranslationDiskCache(directory: directory).storeOutput("Old OCR-only result", for: oldKey)
+        let first = try await client.runPromptWithCacheInfo("Fixture prompt", text: "Screenshot", imagePNG: image)
+        #expect(first.output == "Hello 世界")
+        #expect(!first.isCacheHit)
+        let cached = try await client.runPromptWithCacheInfo("Fixture prompt", text: "Screenshot", imagePNG: image)
+        #expect(cached.isCacheHit)
+        let stream = try await client.runPromptStreamWithCacheInfo("Fixture prompt", text: "Screenshot", imagePNG: image, useCache: false)
+        #expect(!stream.isCacheHit)
+        var output = ""
+        for try await delta in stream.stream { output += delta }
+        #expect(output == first.output)
+        let other = try await client.runPromptWithCacheInfo("Fixture prompt", text: "Screenshot", imagePNG: image + Data([0]))
+        #expect(!other.isCacheHit)
+        let text = try await client.runPromptWithCacheInfo("Fixture prompt", text: "Fixture selection")
+        #expect(!text.isCacheHit)
+    }
+
     @Test func streamingRoundTrip() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let client = try translator()

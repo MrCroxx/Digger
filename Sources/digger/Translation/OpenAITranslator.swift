@@ -115,9 +115,10 @@ actor OpenAITranslator {
     func runPromptWithCacheInfo(
         _ prompt: String,
         text: String,
+        imagePNG: Data? = nil,
         useCache: Bool = true
     ) async throws -> PromptResult {
-        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
+        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text, imagePNG: imagePNG)
         if useCache, let cachedOutput = await cache.cachedOutput(for: cacheKey) {
             return PromptResult(output: cachedOutput, isCacheHit: true)
         }
@@ -136,9 +137,10 @@ actor OpenAITranslator {
     func runPromptStreamWithCacheInfo(
         _ prompt: String,
         text: String,
+        imagePNG: Data? = nil,
         useCache: Bool = true
     ) async throws -> PromptStreamResult {
-        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text)
+        let (query, cacheKey) = makeQueryAndCacheKey(prompt: prompt, text: text, imagePNG: imagePNG)
         if useCache, let cachedOutput = await cache.cachedOutput(for: cacheKey) {
             return PromptStreamResult(
                 stream: Self.singleValueStream(output: cachedOutput),
@@ -174,16 +176,24 @@ actor OpenAITranslator {
 
     private func makeQueryAndCacheKey(
         prompt: String,
-        text: String
+        text: String,
+        imagePNG: Data?
     ) -> (query: ChatQuery, cacheKey: TranslationDiskCache.RequestKey) {
         let reasoningEffort = Self.reasoningEffort(thinkEffort)
         let effectivePrompt = PromptTemplates.preservingMarkdown(prompt)
+            + (imagePNG == nil ? "" : "\n\n" + PromptTemplates.imageTaskInstruction)
         var messages: [ChatQuery.ChatCompletionMessageParam] = []
         if !systemPrompt.isEmpty {
             messages.append(.system(.init(content: .textContent(systemPrompt))))
         }
         messages.append(.system(.init(content: .textContent(effectivePrompt))))
-        messages.append(.user(.init(content: .string(text))))
+        if let imagePNG {
+            messages.append(.user(.init(content: .contentParts([
+                .image(.init(imageUrl: .init(url: "data:image/png;base64," + imagePNG.base64EncodedString(), detail: nil)))
+            ]))))
+        } else {
+            messages.append(.user(.init(content: .string(text))))
+        }
 
         let query = ChatQuery(
             messages: messages,
@@ -193,6 +203,7 @@ actor OpenAITranslator {
         )
         let cacheKey = TranslationDiskCache.makeRequestKey(
             input: text,
+            imagePNG: imagePNG,
             prompt: effectivePrompt,
             systemPrompt: systemPrompt,
             model: model,

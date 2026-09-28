@@ -6,7 +6,7 @@ import Foundation
 final class PopupFunctionRunner {
     private var task: Task<Void, Never>?
 
-    func run(text: String, forceAPI: Bool = false, anchorLocation: CGPoint? = nil) {
+    func run(text: String, imagePNG: Data? = nil, forceAPI: Bool = false, anchorLocation: CGPoint? = nil) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let input = text // Leading indentation and trailing hard breaks are Markdown syntax.
         task?.cancel()
@@ -16,13 +16,16 @@ final class PopupFunctionRunner {
         let anchor = anchorLocation ?? NSEvent.mouseLocation
         let streaming = AppPreferences.translationStreamingEnabled()
         let translator = OpenAITranslator()
+        selectionPopup.onRetry = { [weak self] _, location in
+            self?.run(text: input, imagePNG: imagePNG, forceAPI: true, anchorLocation: location)
+        }
         selectionPopup.onStop = { [weak self] in self?.task?.cancel() }
         selectionPopup.showLoading(original: input, near: anchor, requestID: requestID, functions: functions)
         task = Task {
             await withTaskGroup(of: Void.self) { group in
                 for function in functions {
                     group.addTask {
-                        await Self.execute(function: function, input: input, translator: translator,
+                        await Self.execute(function: function, input: input, imagePNG: imagePNG, translator: translator,
                                            requestID: requestID, anchor: anchor, streaming: streaming, forceAPI: forceAPI, started: started)
                     }
                 }
@@ -30,7 +33,7 @@ final class PopupFunctionRunner {
         }
     }
 
-    private static func execute(function: PopupFunction, input: String, translator: OpenAITranslator?,
+    private static func execute(function: PopupFunction, input: String, imagePNG: Data?, translator: OpenAITranslator?,
                                 requestID: UUID, anchor: CGPoint, streaming: Bool, forceAPI: Bool,
                                 started: ContinuousClock.Instant) async {
         // Debug timings contain action metadata and counts, never selections, answers, or keys.
@@ -56,7 +59,7 @@ final class PopupFunctionRunner {
         trace("start streaming=\(streaming) bypass_cache=\(forceAPI)")
         do {
             if streaming {
-                let result = try await translator.runPromptStreamWithCacheInfo(function.prompt, text: input, useCache: !forceAPI)
+                let result = try await translator.runPromptStreamWithCacheInfo(function.prompt, text: input, imagePNG: imagePNG, useCache: !forceAPI)
                 trace("stream_ready cache_hit=\(result.isCacheHit)")
                 var output = ""
                 for try await delta in result.stream {
@@ -71,7 +74,7 @@ final class PopupFunctionRunner {
                 publish(output.isEmpty ? UIStrings.Popup.emptyResult : output, final: true, cached: result.isCacheHit)
                 trace("complete chars=\(output.count) cache_hit=\(result.isCacheHit)")
             } else {
-                let result = try await translator.runPromptWithCacheInfo(function.prompt, text: input, useCache: !forceAPI)
+                let result = try await translator.runPromptWithCacheInfo(function.prompt, text: input, imagePNG: imagePNG, useCache: !forceAPI)
                 try Task.checkCancellation()
                 publish(result.output.isEmpty ? UIStrings.Popup.emptyResult : result.output, final: true, cached: result.isCacheHit)
                 trace("complete chars=\(result.output.count) cache_hit=\(result.isCacheHit)")

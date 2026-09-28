@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the Swift client against a loopback-only API fixture; no real key or provider."""
+import base64
 import json
 import os
 import subprocess
@@ -73,7 +74,16 @@ try:
         assert "Keep code, URLs, and link destinations unchanged" in messages[1]["content"]
         assert "extra Markdown code fence" in messages[1]["content"]
         expected = "    let source = 1\n\n# Source\n" if query["model"] == "markdown" else "Fixture selection"
-        assert messages[2]["content"] == expected
+        content = messages[2]["content"]
+        if query["model"] == "vision" and isinstance(content, list):
+            assert "not merely a transcription" in messages[1]["content"]
+            assert len(content) == 1 and content[0]["type"] == "image_url"
+            url = content[0]["image_url"]["url"]
+            assert url.startswith("data:image/png;base64,")
+            assert base64.b64decode(url.split(",", 1)[1]).startswith(b"\x89PNG\r\n\x1a\n")
+        else:
+            assert "The attached image is the source input" not in messages[1]["content"]
+            assert content == expected
     print(f"Verified {len(state['requests'])} local requests, reasoning payloads, and cancellation.")
 finally:
     server.shutdown()

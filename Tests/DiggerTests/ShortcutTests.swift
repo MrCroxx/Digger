@@ -4,6 +4,21 @@ import Testing
 @testable import digger
 
 struct ShortcutTests {
+    @Test func shortcutFiresImmediatelyOncePerPressAndIgnoresRepeat() {
+        var state = ShortcutPressState()
+        let initial = state.press()
+        let repeats = [state.press(), state.press()]
+        #expect(initial)
+        #expect(repeats == [false, false])
+        state.release()
+        let next = state.press()
+        #expect(next)
+        state.release()
+        state.release()
+        let afterExtraRelease = state.press()
+        #expect(afterExtraRelease)
+    }
+
     @Test func commandControlEUsesCarbonModifierBits() {
         let shortcut = KeyboardShortcut(keyCode: CGKeyCode(kVK_ANSI_E), modifiers: [.maskCommand, .maskControl])
         #expect(shortcut.carbonModifiers == UInt32(cmdKey | controlKey))
