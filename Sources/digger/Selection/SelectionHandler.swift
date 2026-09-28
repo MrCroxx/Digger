@@ -11,19 +11,6 @@ final class SelectionHandler: @unchecked Sendable {
     private let triggerCooldown: TimeInterval = 0.25
     @MainActor private lazy var popupRunner = PopupFunctionRunner()
 
-    init() {
-        Task { @MainActor [weak self] in
-            selectionPopup.onRetry = { [weak self] text, anchorLocation in
-                guard let self else {
-                    return
-                }
-                Task {
-                    self.popupRunner.run(text: text, forceAPI: true, anchorLocation: anchorLocation)
-                }
-            }
-        }
-    }
-
     func handleShortcut() async {
         guard shouldHandleTrigger() else { return }
         let acquired = extractionLock.withLockUnchecked { busy in
@@ -32,21 +19,34 @@ final class SelectionHandler: @unchecked Sendable {
             return true
         }
         guard acquired else { return }
+        defer { extractionLock.withLockUnchecked { $0 = false } }
         // Read before activating our panel so the source app keeps its selection.
         let selected = fetchSelectedTextOnly()
-        let text = Self.readSelection(isWeb: isWebSelection(), accessibilityText: selected,
-                                      copy: copySelectionText, word: fetchOrSelectText)
-        extractionLock.withLockUnchecked { $0 = false }
+        let isWeb = isWebSelection()
+        // Editors can implement Copy with no selection as "copy the current line".
+        // Do not mistake that line for a selection during the screenshot gesture.
+        let skipCopy = !isWeb && selected == nil && hasEmptySelectionRange()
+        let text = Self.readSelection(isWeb: isWeb, accessibilityText: selected,
+                                      copy: { skipCopy ? nil : self.copySelectionText() },
+                                      word: { self.fetchSelectedRangeText() })
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            print("[Digger] No selected text was available through Accessibility or clipboard fallback.")
-            await MainActor.run {
-                selectionPopup.showNotice(title: localized("No selected text", "没有读取到选中文字", "選択テキストがありません"),
-                                          message: localized("Select text in another app, then press your Digger shortcut again. If text is already selected, check Accessibility access for this running build.", "请先在其他应用中选中文字，再按 Digger 快捷键。如果已经选中，请检查当前运行版本的辅助功能权限。", "他のアプリでテキストを選択し、もう一度ショートカットを押してください。選択済みの場合は現在のビルドのアクセシビリティ権限を確認してください。"))
-            }
+            await captureAndTranslate()
             return
         }
         print("[Digger] Selection read; starting prompt actions.")
         await popupRunner.run(text: text)
+    }
+
+    @MainActor
+    private func captureAndTranslate() async {
+        selectionPopup.dismiss()
+        do {
+            guard let image = try await RegionScreenshot.capture() else { return }
+            popupRunner.run(text: localized("Screenshot", "截图", "スクリーンショット"), imagePNG: image)
+        } catch {
+            selectionPopup.showNotice(title: localized("Screenshot unavailable", "无法截屏", "スクリーンショットを取得できません"),
+                                      message: error.localizedDescription)
+        }
     }
 
     private func shouldHandleTrigger() -> Bool {
@@ -95,7 +95,14 @@ final class SelectionHandler: @unchecked Sendable {
         return nil
     }
 
-    private func fetchOrSelectText() -> String? {
+    private func hasEmptySelectionRange() -> Bool {
+        guard let focused = copyAttribute(element: systemElement, attribute: kAXFocusedUIElementAttribute as CFString),
+              let value = copyAttribute(element: focused as! AXUIElement, attribute: kAXSelectedTextRangeAttribute as CFString) else { return false }
+        var range = CFRange()
+        return AXValueGetValue(value as! AXValue, .cfRange, &range) && range.length == 0
+    }
+
+    private func fetchSelectedRangeText() -> String? {
         guard let focusedElementValue = copyAttribute(
             element: systemElement,
             attribute: kAXFocusedUIElementAttribute as CFString
@@ -121,7 +128,6 @@ final class SelectionHandler: @unchecked Sendable {
             return nil
         }
 
-        let selectionLocation = selectionRange.location
         var contextText: String?
         var contextBaseLocation = 0
 
@@ -173,27 +179,7 @@ final class SelectionHandler: @unchecked Sendable {
             }
         }
 
-        let caretIndex = max(0, min(selectionLocation - contextBaseLocation, nsContext.length))
-        let wordRange = currentWordRange(in: contextText, caretIndex: caretIndex)
-        guard wordRange.length > 0 else {
-            return nil
-        }
-
-        var adjustedRange = CFRange(
-            location: contextBaseLocation + wordRange.location,
-            length: wordRange.length
-        )
-        let axRange = AXValueCreate(.cfRange, &adjustedRange)
-        if let axRange,
-           let rangeText = copyParameterizedAttribute(
-            element: focusedElement,
-            attribute: kAXStringForRangeParameterizedAttribute as CFString,
-            parameter: axRange
-           ) as? String, !rangeText.isEmpty {
-            return rangeText
-        }
-
-        return nsContext.substring(with: NSRange(location: wordRange.location, length: wordRange.length))
+        return nil
     }
 
 

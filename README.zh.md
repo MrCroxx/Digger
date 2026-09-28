@@ -20,6 +20,9 @@
 在浏览器、文档或其他向 macOS 提供文本选区的应用里，选中一段文字，按下 **⌘E**，
 答案就会出现在手边。已启用的提示词并行运行，让翻译和简短摘要一起呈现。
 
+未选中文字时，同一快捷键会打开带蒙层的框选界面。拖动截图翻译，按 Esc 取消。
+截图翻译需要屏幕录制权限，以及支持图片输入的模型。
+
 展开原文，对照结果阅读；折叠暂时不需要的部分，或固定浮窗继续查看。
 可以单独复制一条结果，也可以复制所有结果，或连同原文一起复制。
 
@@ -108,7 +111,7 @@ CI 安装包保留七天，使用临时签名，未经 Apple 公证。如果构�
 
 ### 你的数据与你的模型服务
 
-调用 Digger 时，选中文字和提示词会直接发送给你配置的 API 服务。
+调用 Digger 时，选中文字或框选截图，以及提示词会直接发送给你配置的 API 服务。
 本地缓存不意味着 AI 生成可以离线完成。设置和 API 密钥保存在这台 Mac 的偏好设置中；
 目前密钥存储使用 **UserDefaults**，未使用 Keychain。
 
@@ -123,17 +126,20 @@ Digger 不会把选中文字或生成结果写入日志，Markdown 渲染器不�
 ```bash
 git clone https://github.com/mrcroxx/digger.git
 cd digger
-swift run digger
+make dev
 ```
+
+`make dev` 编译并打开 Debug 应用；`make build` 只编译 Debug；`make test` 运行 Swift 测试。
 
 构建安装包：
 
 ```bash
-DIGGER_MAC_UNSIGNED=1 ./scripts/package-desktop.sh
+make release
 ```
 
 该命令会运行打包检查与测试，然后生成 `dist/Digger.app`，以及与构建机器架构一致的 DMG 和 ZIP。
-打包不会自动安装应用。日常本地安装建议使用固定签名身份，详见 [开发指南](docs/development.md)。
+打包不会自动安装应用。Make 默认选择钥匙串中唯一的签名证书；无证书时使用临时签名，多个证书时需指定 `SIGN_IDENTITY`。
+也可运行 `make release DIGGER_MAC_UNSIGNED=1` 使用临时签名，详见 [开发指南](docs/development.md)。
 
 使用离线示例查看界面，或重新生成截图：
 

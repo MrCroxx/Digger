@@ -39,7 +39,7 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.isHidden = true
 
         viewModel.onStatusChange = { [weak self] status in
-            guard status.allGranted else {
+            guard status.accessibility else {
                 return
             }
             self?.onReady?()

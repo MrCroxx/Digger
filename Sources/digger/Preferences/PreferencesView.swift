@@ -312,6 +312,7 @@ struct PreferencesView: View {
                 }
                 .preferenceInputStyle()
                 .frame(width: 180)
+                .help(localized("With no text selected, the shortcut captures a region for translation.", "未选中文字时，按快捷键框选截图翻译。", "テキスト未選択時は、ショートカットで範囲を選択して翻訳できます。"))
             } label: {
                 preferenceLabel(UIStrings.Preferences.popupShortcutLabel)
             }

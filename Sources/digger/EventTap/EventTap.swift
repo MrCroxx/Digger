@@ -10,6 +10,7 @@ final class GlobalShortcutMonitor {
     private(set) var registeredShortcut: KeyboardShortcut?
     private var registrationError: OSStatus?
     private var recording = false
+    private var pressState = ShortcutPressState()
     private var observers: [NSObjectProtocol] = []
     private var mouseMonitors: [Any] = []
     private let selectionHandler: SelectionHandler
@@ -36,7 +37,10 @@ final class GlobalShortcutMonitor {
     @discardableResult
     func start() -> Bool {
         if eventHandler == nil {
-            var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            var types = [
+                EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+            ]
             let status = InstallEventHandler(GetEventDispatcherTarget(), { _, event, context in
                 guard let event, let context else { return OSStatus(eventNotHandledErr) }
                 var id = EventHotKeyID()
@@ -45,10 +49,10 @@ final class GlobalShortcutMonitor {
                                                MemoryLayout<EventHotKeyID>.size, nil, &id)
                 guard result == noErr, id.signature == 0x44494752, id.id == 1 else { return OSStatus(eventNotHandledErr) }
                 MainActor.assumeIsolated {
-                    Unmanaged<GlobalShortcutMonitor>.fromOpaque(context).takeUnretainedValue().trigger()
+                    Unmanaged<GlobalShortcutMonitor>.fromOpaque(context).takeUnretainedValue().handleKeyEvent(pressed: GetEventKind(event) == UInt32(kEventHotKeyPressed))
                 }
                 return noErr
-            }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
+            }, 2, &types, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
             guard status == noErr else {
                 registrationError = status
                 print("[Digger] Hotkey handler failed: \(status)")
@@ -80,6 +84,15 @@ final class GlobalShortcutMonitor {
         return true
     }
 
+    private func handleKeyEvent(pressed: Bool) {
+        if pressed {
+            guard !recording, pressState.press() else { return }
+            trigger()
+        } else {
+            pressState.release()
+        }
+    }
+
     private func trigger() {
         guard !recording else { return }
         // Keep native editing shortcuts intact in our own settings and prompt editors.
@@ -100,6 +113,7 @@ final class GlobalShortcutMonitor {
     }
 
     private func unregisterShortcut() {
+        pressState = ShortcutPressState()
         if let hotKey { UnregisterEventHotKey(hotKey) }
         hotKey = nil
         registeredShortcut = nil
@@ -143,4 +157,17 @@ final class GlobalShortcutMonitor {
         mouseMonitors.forEach(NSEvent.removeMonitor)
         mouseMonitors.removeAll()
     }
+}
+
+/// Each physical press produces exactly one action, including key-repeat events.
+struct ShortcutPressState {
+    private var held = false
+
+    mutating func press() -> Bool {
+        guard !held else { return false }
+        held = true
+        return true
+    }
+
+    mutating func release() { held = false }
 }

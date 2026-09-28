@@ -24,7 +24,7 @@ final class WelcomeViewModel: ObservableObject {
     init() {
         let current = PermissionChecker.currentStatus()
         status = current
-        canStart = current.allGranted
+        canStart = current.accessibility
         skipWelcomeWhenReady = AppPreferences.skipWelcomeWhenReady()
         startOnLogin = AppPreferences.startOnLoginEnabled()
         startPolling()
@@ -34,10 +34,10 @@ final class WelcomeViewModel: ObservableObject {
         let current = PermissionChecker.currentStatus()
         if current != status {
             status = current
-            canStart = current.allGranted
+            canStart = current.accessibility
             onStatusChange?(current)
         } else {
-            canStart = current.allGranted
+            canStart = current.accessibility
         }
     }
 

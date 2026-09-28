@@ -34,6 +34,27 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 
+# Make targets prefer a stable identity so rebuilds retain macOS permissions.
+if [[ "$SIGN_IDENTITY" == "auto" && "$DIGGER_MAC_UNSIGNED" != "1" ]]; then
+  identities=()
+  while IFS= read -r identity; do
+    identities+=("$identity")
+  done < <(security find-identity -v -p codesigning | awk '/^[[:space:]]*[0-9]+\)/ { print $2 }')
+  case ${#identities[@]} in
+    0)
+      SIGN_IDENTITY=""
+      DIGGER_MAC_UNSIGNED=1
+      echo "No code-signing identity found; using ad-hoc signing. Rebuilds may require renewed permissions." >&2
+      ;;
+    1) SIGN_IDENTITY="${identities[0]}" ;;
+    *)
+      echo "Multiple code-signing identities found. Set SIGN_IDENTITY to a certificate name or SHA-1 hash:" >&2
+      security find-identity -v -p codesigning >&2
+      exit 1
+      ;;
+  esac
+fi
+
 if [[ "$DIGGER_MAC_UNSIGNED" == "1" ]]; then
   if [[ -n "$SIGN_IDENTITY" || "$NOTARIZE" == "1" ]]; then
     echo "DIGGER_MAC_UNSIGNED=1 cannot be combined with SIGN_IDENTITY or NOTARIZE=1" >&2
@@ -101,6 +122,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <string>$VERSION</string>
   <key>CFBundleVersion</key>
   <string>$VERSION</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>CFBundleIconFile</key>

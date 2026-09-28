@@ -53,13 +53,17 @@ actor TranslationDiskCache {
 
     static func makeRequestKey(
         input: String,
+        imagePNG: Data? = nil,
         prompt: String,
         systemPrompt: String,
         model: String,
         endpoint: String,
         thinkEffort: String
     ) -> RequestKey {
-        let inputHash = sha256Hex(input)
+        // Keep image and text keys in separate namespaces; never persist the image.
+        let inputHash = imagePNG.map {
+            "image/png:" + SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined()
+        } ?? sha256Hex(input)
         let promptHash = sha256Hex(prompt)
         let systemPromptHash = sha256Hex(systemPrompt)
         let modelHash = sha256Hex(model)
