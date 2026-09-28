@@ -4,9 +4,10 @@ import Foundation
 
 struct PermissionStatus: Equatable {
     let accessibility: Bool
+    let screenRecording: Bool
 
     var allGranted: Bool {
-        accessibility
+        accessibility && screenRecording
     }
 }
 
@@ -14,18 +15,25 @@ enum PermissionChecker {
     static func currentStatus() -> PermissionStatus {
         let accessibilityGranted = AXIsProcessTrusted()
         return PermissionStatus(
-            accessibility: accessibilityGranted
+            accessibility: accessibilityGranted,
+            screenRecording: CGPreflightScreenCaptureAccess()
         )
     }
 
     static func needsAttention() -> Bool {
-        !currentStatus().allGranted
+        // Text selection remains available without screenshot permission.
+        !currentStatus().accessibility
     }
 }
 
 enum SystemPreferencesLinks {
     static func openAccessibility() {
         open(urlString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    static func openScreenRecording() {
+        if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+        open(urlString: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }
 
     private static func open(urlString: String) {
